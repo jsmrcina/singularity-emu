@@ -5,15 +5,41 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "C/C++: cl.exe build and debug active file",
-            "type": "cppvsdbg",
+            "type": "lldb",
             "request": "launch",
-            "program": "${fileDirname}\\${fileBasenameNoExtension}.exe",
+            "name": "Debug executable 'singularity-emu'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=singularity-emu",
+                    "--package=singularity-emu"
+                ],
+                "filter": {
+                    "name": "singularity-emu",
+                    "kind": "bin"
+                }
+            },
             "args": [],
-            "stopAtEntry": false,
-            "cwd": "${workspaceFolder}",
-            "environment": [],
-            "preLaunchTask": "C/C++: cl.exe build active file"
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'singularity-emu'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=singularity-emu",
+                    "--package=singularity-emu"
+                ],
+                "filter": {
+                    "name": "singularity-emu",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
         }
     ]
 }
