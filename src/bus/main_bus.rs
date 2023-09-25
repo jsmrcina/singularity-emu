@@ -3,7 +3,7 @@ use crate::traits::ReadWrite;
 
 pub struct System<'a>
 {
-    name: String,
+    _name: String,
     sys: &'a mut dyn ReadWrite
 }
 
@@ -24,7 +24,7 @@ impl<'a> MainBus<'a>
     pub fn add_system(&mut self, address_range: (u16, u16), name: String, sys: &'a mut dyn ReadWrite)
     {
         let s: System = System {
-            name: name,
+            _name: name,
             sys: sys
         };
 
