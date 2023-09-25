@@ -37,8 +37,11 @@ impl<'a> MainBus<'a>
 
         self.system_address_ranges.insert(address_range, s);
     }
+}
 
-    pub fn write(&mut self, address: u16, data: u8)
+impl<'a> ReadWrite for MainBus<'a>
+{
+    fn write(&mut self, address: u16, data: u8)
     {
         let mut iter = self.system_address_ranges.iter_mut();
         let result = iter.find(|x| x.0.0 <= address && x.0.1 >= address);
@@ -50,7 +53,7 @@ impl<'a> MainBus<'a>
         }
     }
 
-    pub fn read(&mut self, address: u16) -> u8
+    fn read(&self, address: u16) -> u8
     {
         let mut iter = self.system_address_ranges.iter();
         let result = iter.find(|x| x.0.0 <= address && x.0.1 >= address);
@@ -61,6 +64,4 @@ impl<'a> MainBus<'a>
             None => panic!("Failed to find a system which maps this address range"),
         }
     }
-
-
 }
