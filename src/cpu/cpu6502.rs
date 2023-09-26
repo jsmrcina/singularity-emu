@@ -1,5 +1,6 @@
 use crate::traits::ReadWrite;
 
+#[repr(u8)]
 pub enum Flags6502
 {
     C = (1 << 0), // Carry Bit
@@ -383,6 +384,22 @@ impl<'a> CPU6502<'a>
         return 0;
     }
 
+    fn write_pc_to_stack(&mut self)
+    {
+        self.write(CPU6502::STACK_START_ADDRESS + self.stkp as u16, ((self.pc >> 8) & 0x00FF) as u8);
+        self.stkp -= 1;
+        self.write(CPU6502::STACK_START_ADDRESS + self.stkp as u16, (self.pc & 0x00FF) as u8);
+        self.stkp -= 1;
+    }
+
+    fn read_pc_from_stack(&mut self)
+    {
+        self.stkp += 1;
+        self.pc = self.read(CPU6502::STACK_START_ADDRESS + self.stkp as u16) as u16;
+        self.stkp += 1;
+        self.pc |= (self.read(CPU6502::STACK_START_ADDRESS + self.stkp as u16) as u16) << 8;
+    }
+
     // Instruction: Break
     // Function: Program Sourced Interrupt
     pub fn brk(&mut self) -> u8
@@ -390,10 +407,7 @@ impl<'a> CPU6502<'a>
         self.pc += 1;
 
         self.set_flag(Flags6502::I, true);
-        self.write(CPU6502::STACK_START_ADDRESS + self.stkp as u16, ((self.pc >> 8) & 0x00FF) as u8);
-        self.stkp -= 1;
-        self.write(CPU6502::STACK_START_ADDRESS + self.stkp as u16, (self.pc & 0x00FF) as u8);
-        self.stkp -= 1;
+        self.write_pc_to_stack();
 
         // TODO: Not clear when exactly the B-flag should be set based on the documentation, needs investigation
         self.set_flag(Flags6502::B, true);
@@ -463,165 +477,422 @@ impl<'a> CPU6502<'a>
         return 0;
     }
 
+    fn cmp_helper<F>(&mut self, closure: F) where F: Fn(&CPU6502) -> u8
+    {
+        self.fetch();
+        let temp: u16 = closure(self) as u16 - self.fetched_data as u16;
+        self.set_flag(Flags6502::C, self.a >= self.fetched_data);
+        self.set_flag(Flags6502::Z, (temp & 0x00FF) == 0x0000);
+        self.set_flag(Flags6502::N, temp & 0x0080 == 0x0080);
+    }
 
     pub fn cmp(&mut self) -> u8 
     {
-        return 0;
+        self.cmp_helper(|s| -> u8 { s.a });
+        return 1;
     }
+
     pub fn cpx(&mut self) -> u8 
     {
-        return 0;
-    }
-    pub fn cpy(&mut self) -> u8 
-    {
-        return 0;
-    }
-    pub fn dec(&mut self) -> u8 
-    {
-        return 0;
-    }
-    pub fn dex(&mut self) -> u8 
-    {
-        return 0;
-    }
-    pub fn dey(&mut self) -> u8 
-    {
-        return 0;
-    }
-    pub fn eor(&mut self) -> u8 
-    {
-        return 0;
-    }
-    pub fn inc(&mut self) -> u8 
-    {
-        return 0;
-    }
-    pub fn inx(&mut self) -> u8 
-    {
-        return 0;
-    }
-    pub fn iny(&mut self) -> u8 
-    {
-        return 0;
-    }
-    pub fn jmp(&mut self) -> u8 
-    {
-        return 0;
-    }
-    pub fn jsr(&mut self) -> u8 
-    {
-        return 0;
-    }
-    pub fn lda(&mut self) -> u8 
-    {
-        return 0;
-    }
-    pub fn ldx(&mut self) -> u8 
-    {
-        return 0;
-    }
-    pub fn ldy(&mut self) -> u8 
-    {
-        return 0;
-    }
-    pub fn lsr(&mut self) -> u8 
-    {
-        return 0;
-    }
-    pub fn nop(&mut self) -> u8 
-    {
-        return 0;
-    }
-    pub fn ora(&mut self) -> u8 
-    {
-        return 0;
-    }
-    pub fn pha(&mut self) -> u8 
-    {
-        return 0;
-    }
-    pub fn php(&mut self) -> u8 
-    {
-        return 0;
-    }
-    pub fn pla(&mut self) -> u8 
-    {
-        return 0;
-    }
-    pub fn plp(&mut self) -> u8 
-    {
-        return 0;
-    }
-    pub fn rol(&mut self) -> u8 
-    {
-        return 0;
-    }
-    pub fn ror(&mut self) -> u8 
-    {
-        return 0;
-    }
-    pub fn rti(&mut self) -> u8 
-    {
-        return 0;
-    }
-    pub fn rts(&mut self) -> u8 
-    {
-        return 0;
-    }
-    pub fn sbc(&mut self) -> u8 
-    {
-        return 0;
-    }
-    pub fn sec(&mut self) -> u8 
-    {
-        return 0;
-    }
-    pub fn sed(&mut self) -> u8 
-    {
-        return 0;
-    }
-    pub fn sei(&mut self) -> u8 
-    {
-        return 0;
-    }
-    pub fn sta(&mut self) -> u8 
-    {
-        return 0;
-    }
-    pub fn stx(&mut self) -> u8 
-    {
-        return 0;
-    }
-    pub fn sty(&mut self) -> u8 
-    {
-        return 0;
-    }
-    pub fn tax(&mut self) -> u8 
-    {
-        return 0;
-    }
-    pub fn tay(&mut self) -> u8 
-    {
-        return 0;
-    }
-    pub fn tsx(&mut self) -> u8 
-    {
-        return 0;
-    }
-    pub fn txa(&mut self) -> u8 
-    {
-        return 0;
-    }
-    pub fn txs(&mut self) -> u8 
-    {
-        return 0;
-    }
-    pub fn tya(&mut self) -> u8 
-    {
+        self.cmp_helper(|s| -> u8 { s.x });
         return 0;
     }
 
+    pub fn cpy(&mut self) -> u8 
+    {
+        self.cmp_helper(|s| -> u8 { s.y });
+        return 0;
+    }
+
+    pub fn dec(&mut self) -> u8 
+    {
+        // TODO
+        return 0;
+    }
+
+    // Instruction: Decrement X Register
+    // Function: X = X - 1
+    pub fn dex(&mut self) -> u8 
+    {
+        self.x -= 1;
+        self.set_flag(Flags6502::Z, self.x == 0x00);
+        self.set_flag(Flags6502::N, (self.x & 0x80) == 0x80);
+        return 0;
+    }
+
+    // Instruction: Decrement Y Register
+    // Function: Y = Y - 1
+    pub fn dey(&mut self) -> u8 
+    {
+        self.y -= 1;
+        self.set_flag(Flags6502::Z, self.y == 0x00);
+        self.set_flag(Flags6502::N, (self.y & 0x80) == 0x80);
+        return 0;
+    }
+
+    // Instruction: Bitwise Logic XOR
+    // Function: A = A xor M
+    pub fn eor(&mut self) -> u8 
+    {
+        self.fetch();
+        self.a = self.a ^ self.fetched_data;
+        self.set_flag(Flags6502::Z, self.a == 0x00);
+        self.set_flag(Flags6502::N, (self.a & 0x80) == 0x80);
+        return 0;
+    }
+
+    // Instruction: Increment Value at Memory Location
+    // Function: M = M + 1
+    pub fn inc(&mut self) -> u8 
+    {
+        self.fetch();
+        let temp: u16 = self.fetched_data as u16 + 1;
+        self.write(self.addr_abs, (temp & 0x00FF) as u8);
+        self.set_flag(Flags6502::Z, (temp & 0x00FF) == 0x0000);
+        self.set_flag(Flags6502::N, (temp & 0x0080) == 0x0080);
+        return 0;
+    }
+
+    // Instruction: Increment X Register
+    // Function: X = X + 1
+    pub fn inx(&mut self) -> u8 
+    {
+        self.x += 1;
+        self.set_flag(Flags6502::Z, self.x == 0x00);
+        self.set_flag(Flags6502::N, (self.x & 0x80) == 0x80);
+        return 0;
+    }
+
+    // Instruction: Increment Y Register
+    // Function: Y = Y + 1
+    pub fn iny(&mut self) -> u8 
+    {
+        self.y += 1;
+        self.set_flag(Flags6502::Z, self.y == 0x00);
+        self.set_flag(Flags6502::N, (self.y & 0x80) == 0x80);
+        return 0;
+    }
+
+    // Instruction: Jump To Location
+    // Function: pc = address
+    pub fn jmp(&mut self) -> u8 
+    {
+        self.pc = self.addr_abs;
+        return 0;
+    }
+
+    // Instruction: Jump To Sub-Routine
+    // Function:    Push current pc to stack, pc = address
+    pub fn jsr(&mut self) -> u8 
+    {
+        // Decrement PC to get back to current program counter
+        self.pc -= 1;
+        self.write_pc_to_stack();
+        self.pc = self.addr_abs;
+        return 0;
+    }
+
+    fn load_helper_write<F>(&mut self, write_closure: F) where F: Fn(&mut CPU6502)
+    {
+        self.fetch();
+        write_closure(self);
+    }
+
+    fn load_helper_update_flags<F>(&mut self, read_closure: F) where F: Fn(&CPU6502) -> u8
+    {
+        self.set_flag(Flags6502::Z, read_closure(self) == 0x00);
+        self.set_flag(Flags6502::N, (read_closure(self) & 0x80) == 0x80);
+    }
+
+    pub fn lda(&mut self) -> u8 
+    {
+        self.load_helper_write(|x| x.a = x.fetched_data);
+        self.load_helper_update_flags(|x| return x.a);
+        return 0;
+    }
+
+    pub fn ldx(&mut self) -> u8 
+    {
+        self.load_helper_write(|x| x.x = x.fetched_data);
+        self.load_helper_update_flags(|x| return x.x);
+        return 0;
+    }
+
+    pub fn ldy(&mut self) -> u8 
+    {
+        self.load_helper_write(|x| x.y = x.fetched_data);
+        self.load_helper_update_flags(|x| return x.y);
+        return 0;
+    }
+
+    pub fn lsr(&mut self) -> u8 
+    {
+        self.fetch();
+        self.set_flag(Flags6502::C, (self.fetched_data & 0x0001) == 0x0001); // Carry
+        let temp: u16 = (self.fetched_data as u16) >> 1;
+        
+        self.set_flag(Flags6502::Z, (temp & 0x00FF) == 0x0000); // Zero
+        self.set_flag(Flags6502::N, temp & 0x0080 == 0x0080); // Negative
+
+        if self.ins[self.opcode as usize].addr_mode == CPU6502::imp
+        {
+            self.a = (temp & 0x00FF) as u8;
+        }
+        else
+        {
+            self.write(self.addr_abs, (temp & 0x00FF) as u8);
+        }
+
+        return 0;
+    }
+
+    // Instruction: No-op
+    pub fn nop(&mut self) -> u8 
+    {
+        // There are different kinds of NOPs depending on the opcode
+        match self.opcode
+        {
+            0x1C => return 1,
+            0x3C => return 1,
+            0x5C => return 1,
+            0x7C => return 1,
+            0xDC => return 1,
+            0xFC => return 1,
+            _ => return 0
+        }
+    }
+
+    // Instruction: Bitwise Logic OR
+    // Function: A = A | M
+    pub fn ora(&mut self) -> u8 
+    {
+        self.fetch();
+        self.a = self.a | self.fetched_data;
+
+        self.set_flag(Flags6502::Z, self.a == 0x00); // Zero
+        self.set_flag(Flags6502::N, self.a & 0x80 == 0x80); // Negative
+        return 0;
+    }
+
+    // Instruction: Push Accumulator to Stack
+    // Function: Write A to stkp
+    pub fn pha(&mut self) -> u8 
+    {
+        self.write(CPU6502::STACK_START_ADDRESS + self.stkp as u16, self.a);
+        self.stkp -= 1;
+        return 0;
+    }
     
+    // Instruction: Push Status Register to Stack
+    // Function: status -> stack
+    pub fn php(&mut self) -> u8 
+    {
+        // Note that Break and Unused flag are both set to 1 when writing
+        self.write(CPU6502::STACK_START_ADDRESS + self.stkp as u16, (self.status) | Flags6502::B as u8 | Flags6502::U as u8);
+        self.set_flag(Flags6502::B, false);
+        self.set_flag(Flags6502::U, false);
+        self.stkp -= 1;
+        return 0;
+    }
+
+    // Instruction: Pop Accumulator off Stack
+    // Function: Set A to stack
+    pub fn pla(&mut self) -> u8 
+    {
+        self.stkp += 1;
+        self.a = self.read(CPU6502::STACK_START_ADDRESS + self.stkp as u16);
+        self.set_flag(Flags6502::Z, self.a == 0x00); // Zero
+        self.set_flag(Flags6502::N, self.a & 0x80 == 0x80); // Negative
+        return 0;
+    }
+
+    // Instruction: Pop Status Register off Stack
+    // Function: Status <- stack
+    pub fn plp(&mut self) -> u8 
+    {
+        self.stkp += 1;
+        self.status = self.read(CPU6502::STACK_START_ADDRESS + self.stkp as u16);
+        self.set_flag(Flags6502::U, true);
+        return 0;
+    }
+
+    // Instruction: Rotate Left
+    // Function: Shift fetched data left by one, and 0-bit of result is set to C
+    pub fn rol(&mut self) -> u8 
+    {
+        self.fetch();
+        let temp: u16 = ((self.fetched_data as u16) << 1) | self.get_flag(Flags6502::C) as u16;
+        self.set_flag(Flags6502::C, temp & 0xFF00 > 0); // Carry
+        self.set_flag(Flags6502::Z, (temp & 0x00FF) == 0x0000); // Zero
+        self.set_flag(Flags6502::N, temp & 0x0080 == 0x0080); // Negative
+
+        // TODO: Consolidate this pattern
+        if self.ins[self.opcode as usize].addr_mode == CPU6502::imp
+        {
+            self.a = (temp & 0x00FF) as u8;
+        }
+        else
+        {
+            self.write(self.addr_abs, (temp & 0x00FF) as u8);
+        }
+
+        return 0;
+    }
+
+    // Instruction: Rotate Right
+    // Function: Shift fetched data right by one, and 7-bit of result is set to C
+    pub fn ror(&mut self) -> u8 
+    {
+        self.fetch();
+        let temp: u16 = (self.fetched_data as u16) >> 1 | ((self.get_flag(Flags6502::C) as u16) << 7);
+        self.set_flag(Flags6502::C, (self.fetched_data & 0x01) == 0x01);
+        self.set_flag(Flags6502::Z, (temp & 0x00FF) == 0x0000); // Zero
+        self.set_flag(Flags6502::N, (temp & 0x0080) == 0x0080); // Negative
+
+        // TODO: Consolidate this pattern
+        if self.ins[self.opcode as usize].addr_mode == CPU6502::imp
+        {
+            self.a = (temp & 0x00FF) as u8;
+        }
+        else
+        {
+            self.write(self.addr_abs, (temp & 0x00FF) as u8);
+        }
+
+        return 0;
+    }
+
+    // Instruction: Return from Interrupt
+    // Function: Read status and pc from stkp
+    pub fn rti(&mut self) -> u8 
+    {
+        self.stkp += 1;
+        self.status = self.read(CPU6502::STACK_START_ADDRESS + self.stkp as u16);
+
+        // Zero out break and unused values, TODO: Why?
+        self.status &= !(Flags6502::B as u8);
+        self.status &= !(Flags6502::U as u8);
+
+        self.read_pc_from_stack();
+        return 0;
+    }
+
+    // Instruction: Return from subroutine
+    // Function: Read pc from stack, increment PC to next instruction
+    pub fn rts(&mut self) -> u8 
+    {
+        self.read_pc_from_stack();
+        self.pc += 1;
+        return 0;
+    }
+
+    pub fn sbc(&mut self) -> u8 
+    {
+        // TODO: Impl
+        return 0;
+    }
+
+    // Instruction: Set Carry Flag
+    // Function: C = 1
+    pub fn sec(&mut self) -> u8 
+    {
+        self.set_flag(Flags6502::C, true);
+        return 0;
+    }
+
+    // Instruction: Set Decimal Flag
+    // Function: D = 1
+    pub fn sed(&mut self) -> u8 
+    {
+        self.set_flag(Flags6502::D, true);
+        return 0;
+    }
+
+    // Instruction: Set Interrupt Flag / Enable Interrupts
+    // Function: I = 1
+    pub fn sei(&mut self) -> u8 
+    {
+        self.set_flag(Flags6502::I, true);
+        return 0;
+    }
+
+    // Instruction: Store Accumulator at address
+    // Function: M = A
+    pub fn sta(&mut self) -> u8 
+    {
+        self.write(self.addr_abs, self.a);
+        return 0;
+    }
+
+    // Instruction: Store X at address
+    // Function: M = X
+    pub fn stx(&mut self) -> u8 
+    {
+        self.write(self.addr_abs, self.x);
+        return 0;
+    }
+
+    // Instruction: Store Y at address
+    // Function: M = Y
+    pub fn sty(&mut self) -> u8 
+    {
+        self.write(self.addr_abs, self.y);
+        return 0;
+    }
+
+    // Instruction: Transfer Accumulator to X Register
+    // Function: X = A
+    pub fn tax(&mut self) -> u8 
+    {
+        self.x = self.a;
+        self.set_flag(Flags6502::Z, self.x == 0x00); // Zero
+        self.set_flag(Flags6502::N, self.x & 0x80 == 0x80); // Negative
+        return 0;
+    }
+
+    // Instruction: Transfer Accumulator to Y Register
+    // Function: Y = A
+    pub fn tay(&mut self) -> u8 
+    {
+        self.y = self.a;
+        self.set_flag(Flags6502::Z, self.y == 0x00); // Zero
+        self.set_flag(Flags6502::N, self.y & 0x80 == 0x80); // Negative
+        return 0;
+    }
+
+    // Instruction: Transfer Stack Pointer to X
+    // Function:    X = A
+    pub fn tsx(&mut self) -> u8 
+    {
+        self.x = self.stkp;
+        self.set_flag(Flags6502::Z, self.x == 0x00); // Zero
+        self.set_flag(Flags6502::N, self.x & 0x80 == 0x80); // Negative
+        return 0;
+    }
+
+    pub fn txa(&mut self) -> u8 
+    {
+        self.a = self.x;
+        self.set_flag(Flags6502::Z, self.a == 0x00); // Zero
+        self.set_flag(Flags6502::N, self.a & 0x80 == 0x80); // Negative
+        return 0;
+    }
+
+    pub fn txs(&mut self) -> u8 
+    {
+        self.stkp = self.x;
+        return 0;
+    }
+
+    pub fn tya(&mut self) -> u8 
+    {
+        self.a = self.y;
+        self.set_flag(Flags6502::Z, self.a == 0x00); // Zero
+        self.set_flag(Flags6502::N, self.a & 0x80 == 0x80); // Negative
+        return 0;
+    }
+
+    // This function captures illegal opcodes
     pub fn xxx(&mut self) -> u8 
     {
         return 0;
@@ -633,6 +904,10 @@ impl<'a> CPU6502<'a>
         if self.cycles == 0
         {
             self.opcode = self.read(self.pc);
+
+            // TODO: Why?
+            self.set_flag(Flags6502::U, true);
+
             self.pc += 1;
 
             self.cycles = self.ins[self.opcode as usize].cycles;
@@ -641,6 +916,9 @@ impl<'a> CPU6502<'a>
 
             // TODO: Why is this a binary AND?
             self.cycles += additional_cycle1 & additional_cycle2;
+
+            // TODO: Why?
+            self.set_flag(Flags6502::U, true);
         }
 
         self.cycles -= 1;
