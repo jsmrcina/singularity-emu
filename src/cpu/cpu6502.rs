@@ -266,6 +266,7 @@ impl<'a> CPU6502<'a>
     // Opcodes
     pub fn adc(&mut self) -> u8 
     {
+        // TODO: Impl
         return 0;
     }
 
@@ -506,7 +507,7 @@ impl<'a> CPU6502<'a>
 
     pub fn dec(&mut self) -> u8 
     {
-        // TODO
+        // TODO: Impl
         return 0;
     }
 
@@ -861,7 +862,7 @@ impl<'a> CPU6502<'a>
     }
 
     // Instruction: Transfer Stack Pointer to X
-    // Function:    X = A
+    // Function:    X = stkp
     pub fn tsx(&mut self) -> u8 
     {
         self.x = self.stkp;
@@ -870,6 +871,8 @@ impl<'a> CPU6502<'a>
         return 0;
     }
 
+    // Instruction: Transfer X to A
+    // Function: A = X
     pub fn txa(&mut self) -> u8 
     {
         self.a = self.x;
@@ -878,12 +881,16 @@ impl<'a> CPU6502<'a>
         return 0;
     }
 
+    // Instruction: Transfer X to Stack pointer
+    // Function: stkp = x
     pub fn txs(&mut self) -> u8 
     {
         self.stkp = self.x;
         return 0;
     }
 
+    // Instruction: Transfer Y to A
+    // Function: A = Y
     pub fn tya(&mut self) -> u8 
     {
         self.a = self.y;
