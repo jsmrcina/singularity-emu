@@ -1,4 +1,6 @@
 use crate::traits::ReadWrite;
+use std::rc::Rc;
+use std::cell::RefCell;
 
 #[repr(u8)]
 pub enum Flags6502
@@ -23,7 +25,7 @@ struct Instruction<'a>
 
 pub struct CPU6502<'a>
 {
-    bus: &'a mut dyn ReadWrite,
+    bus: Option<Rc<RefCell<dyn ReadWrite>>>,
     a: u8,
     x: u8,
     y: u8,
@@ -43,11 +45,11 @@ impl<'a> CPU6502<'a>
     const STACK_START_ADDRESS: u16 = 0x1000;
     const INTERRUPT_VECTOR: [u16; 2] = [0xFFFE, 0xFFFF];
 
-    pub fn new(bus: &'a mut dyn ReadWrite) -> Self
+    pub fn new() -> Self
     {
         let cpu = CPU6502
         {
-            bus: bus,
+            bus: None,
             a: 0x00,
             x: 0x00,
             y: 0x00,
@@ -216,11 +218,11 @@ impl<'a> CPU6502<'a>
 
         if ptr_lo == 0x00FF
         {
-            self.addr_abs = ((self.read(ptr & 0xFF00 as u16) << 8) | self.read(ptr)) as u16;
+            self.addr_abs = (((self.read(ptr & 0xFF00 as u16) as u16) << 8) | self.read(ptr) as u16) as u16;
         }
         else
         {
-            self.addr_abs = ((self.read(ptr + 1) << 8) | self.read(ptr + 0)) as u16;
+            self.addr_abs = (((self.read(ptr + 1) as u16) << 8) | self.read(ptr + 0) as u16) as u16;
         }
 
         return 0;
@@ -952,11 +954,19 @@ impl<'a> ReadWrite for CPU6502<'a>
 {
     fn write(&mut self, address: u16, data: u8)
     {
-        self.bus.write(address, data);
+        match &self.bus
+        {
+            Some(x) => (*x.borrow_mut()).write(address, data),
+            None => panic!("Error, missing bus inside CPU")
+        }
     }
 
     fn read(&self, address: u16) -> u8
     {
-        return self.bus.read(address);
+        match &self.bus
+        {
+            Some(x) => (*x.borrow_mut()).read(address),
+            None => panic!("Error, missing bus inside CPU")
+        }
     }
 }
