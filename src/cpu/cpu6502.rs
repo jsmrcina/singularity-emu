@@ -84,6 +84,11 @@ impl<'a> CPU6502<'a>
         return cpu;
     }
 
+    pub fn set_bus(&mut self, bus: Option<Rc<RefCell<dyn ReadWrite>>>)
+    {
+        self.bus = bus;
+    }
+
     pub fn get_flag(&self, f: Flags6502) -> u8
     {
         return self.status & (1 << (f as u8));
@@ -266,10 +271,50 @@ impl<'a> CPU6502<'a>
     }
 
     // Opcodes
+    // Instruction: Add with carry
+    // A += M + C
     pub fn adc(&mut self) -> u8 
     {
-        // TODO: Impl
-        return 0;
+        self.fetch();
+        let temp: u16 = self.a as u16 + self.fetched_data as u16 + self.get_flag(Flags6502::C) as u16;
+
+        // If we overflow into 16-bit range, set the carry bit
+        self.set_flag(Flags6502::C, temp > 255);
+        self.set_flag(Flags6502::Z, (temp & 0x00FF) == 0);
+
+        // Taken from https://github.com/OneLoneCoder/olcNES/blob/master/Part%232%20-%20CPU/olc6502.cpp, this excellent guide explains
+        // how V gets set:
+
+        // Here we have not gone out of range. The resulting significant bit has not changed.
+        // So let's make a truth table to understand when overflow has occurred. Here I take
+        // the MSB of each component, where R is RESULT.
+        //
+        // A  M  R | V | A^R | A^M |~(A^M) | 
+        // 0  0  0 | 0 |  0  |  0  |   1   |
+        // 0  0  1 | 1 |  1  |  0  |   1   |
+        // 0  1  0 | 0 |  0  |  1  |   0   |
+        // 0  1  1 | 0 |  1  |  1  |   0   |  so V = ~(A^M) & (A^R)
+        // 1  0  0 | 0 |  1  |  1  |   0   |
+        // 1  0  1 | 0 |  0  |  1  |   0   |
+        // 1  1  0 | 1 |  1  |  0  |   1   |
+        // 1  1  1 | 0 |  0  |  0  |   1   |
+        //
+        // We can see how the above equation calculates V, based on A, M and R. V was chosen
+        // based on the following hypothesis:
+        //       Positive Number + Positive Number = Negative Result -> Overflow
+        //       Negative Number + Negative Number = Positive Result -> Overflow
+        //       Positive Number + Negative Number = Either Result -> Cannot Overflow
+        //       Positive Number + Positive Number = Positive Result -> OK! No Overflow
+        //       Negative Number + Negative Number = Negative Result -> OK! NO Overflow
+        let V: u16 = (!(self.a as u16 ^ self.fetched_data as u16)) & ((self.a as u16 ^ temp) & 0x0080);
+        self.set_flag(Flags6502::V, V != 0);
+
+        self.set_flag(Flags6502::N, temp & 0x80 == 0x80);
+
+        // Load the result into the accumulator
+        self.a = (temp & 0x00FF) as u8;
+
+        return 1;
     }
 
     // Instruction: Bitwise Logic AND
@@ -509,7 +554,12 @@ impl<'a> CPU6502<'a>
 
     pub fn dec(&mut self) -> u8 
     {
-        // TODO: Impl
+        self.fetch();
+        let temp: u16 = self.fetched_data as u16 - 1;
+        self.write(self.addr_abs, (temp & 0x00FF) as u8);
+        self.set_flag(Flags6502::Z, (temp & 0x00FF) == 0x0000);
+        self.set_flag(Flags6502::N, (temp & 0x0080) == 0x0080);
+
         return 0;
     }
 
@@ -789,10 +839,56 @@ impl<'a> CPU6502<'a>
         return 0;
     }
 
+    // Explanation borrowed from https://github.com/OneLoneCoder/olcNES/blob/master/Part%232%20-%20CPU/olc6502.cpp
+
+    // Instruction: Subtraction with Borrow In
+    // Function:    A = A - M - (1 - C)
+    // Flags Out:   C, V, N, Z
+    //
+    // Explanation:
+    // Given the explanation for ADC above, we can reorganise our data
+    // to use the same computation for addition, for subtraction by multiplying
+    // the data by -1, i.e. make it negative
+    //
+    // A = A - M - (1 - C)  ->  A = A + -1 * (M - (1 - C))  ->  A = A + (-M + 1 + C)
+    //
+    // To make a signed positive number negative, we can invert the bits and add 1
+    // (OK, I lied, a little bit of 1 and 2s complement :P)
+    //
+    //  5 = 00000101
+    // -5 = 11111010 + 00000001 = 11111011 (or 251 in our 0 to 255 range)
+    //
+    // The range is actually unimportant, because if I take the value 15, and add 251
+    // to it, given we wrap around at 256, the result is 10, so it has effectively 
+    // subtracted 5, which was the original intention. (15 + 251) % 256 = 10
+    //
+    // Note that the equation above used (1-C), but this got converted to + 1 + C.
+    // This means we already have the +1, so all we need to do is invert the bits
+    // of M, the data(!) therfore we can simply add, exactly the same way we did 
+    // before.
     pub fn sbc(&mut self) -> u8 
     {
-        // TODO: Impl
-        return 0;
+        self.fetch();
+
+        // This is an inversion of the bits. Once we invert, the logic just becomes adc()
+        let value: u16 = (self.fetched_data as u16) ^ 0x00FF;
+
+        // This logic is taken from adc()   
+        let temp: u16 = self.a as u16 + value + self.get_flag(Flags6502::C) as u16;
+
+        // If we overflow into 16-bit range, set the carry bit
+        self.set_flag(Flags6502::C, temp > 255);
+        self.set_flag(Flags6502::Z, (temp & 0x00FF) == 0);
+
+        let v: u16 = (!(self.a as u16 ^ self.fetched_data as u16)) & ((self.a as u16 ^ temp) & 0x0080);
+        self.set_flag(Flags6502::V, v != 0);
+
+        self.set_flag(Flags6502::N, temp & 0x80 == 0x80);
+
+        // Load the result into the accumulator
+        self.a = (temp & 0x00FF) as u8;
+
+        return 1;
     }
 
     // Instruction: Set Carry Flag

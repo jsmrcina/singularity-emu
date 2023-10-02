@@ -1,18 +1,20 @@
 use std::collections::HashMap;
+use std::rc::Rc;
+use std::cell::RefCell;
 use crate::traits::ReadWrite;
 
-pub struct System<'a>
+pub struct System
 {
     _name: String,
-    sys: &'a mut dyn ReadWrite
+    sys: Option<Rc<RefCell<dyn ReadWrite>>>
 }
 
-pub struct MainBus<'a>
+pub struct MainBus
 {
-    system_address_ranges: HashMap<(u16, u16), System<'a>>
+    system_address_ranges: HashMap<(u16, u16), System>
 }
 
-impl<'a> MainBus<'a>
+impl MainBus
 {
     pub fn new() -> Self
     {
@@ -21,7 +23,7 @@ impl<'a> MainBus<'a>
         }
     }
 
-    pub fn add_system(&mut self, address_range: (u16, u16), name: String, sys: &'a mut dyn ReadWrite)
+    pub fn add_system(&mut self, address_range: (u16, u16), name: String, sys: Option<Rc<RefCell<dyn ReadWrite>>>)
     {
         let s: System = System {
             _name: name,
@@ -39,7 +41,7 @@ impl<'a> MainBus<'a>
     }
 }
 
-impl<'a> ReadWrite for MainBus<'a>
+impl ReadWrite for MainBus
 {
     fn write(&mut self, address: u16, data: u8)
     {
@@ -48,7 +50,7 @@ impl<'a> ReadWrite for MainBus<'a>
 
         match result
         {
-            Some(x) => x.1.sys.write(address, data),
+            Some(x) => (x.1.sys).as_ref().write(address, data),
             None => panic!("Failed to find a system which maps this address range"),
         }
     }
