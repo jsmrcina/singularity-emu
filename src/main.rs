@@ -48,7 +48,7 @@ impl<'a> MainState<'a>
             .map(|s| u8::from_str_radix(s, 16).expect("Failed to parse hex string"))
             .collect();
 
-        let mut offset: usize = 0;
+        let mut offset: usize = 0x8000;
         for b in bytes
         {
             s.ram.borrow_mut().buffer[offset] = b;
@@ -57,7 +57,7 @@ impl<'a> MainState<'a>
 
         // Set the reset vector
         s.ram.borrow_mut().buffer[0xFFFC] = 0x00;
-        s.ram.borrow_mut().buffer[0xFFFC] = 0x80;
+        s.ram.borrow_mut().buffer[0xFFFD] = 0x80;
 
         s.cpu.borrow_mut().reset();
 
@@ -152,9 +152,15 @@ impl<'a> event::EventHandler<ggez::GameError> for MainState<'a>
     {
         if ctx.keyboard.is_key_just_pressed(ggez::input::keyboard::KeyCode::Space)
         {
-            while !self.cpu.borrow().complete()
+            println!("clock!");
+            
+            loop
             {
                 self.cpu.borrow_mut().clock_tick();
+                if self.cpu.borrow().complete()
+                {
+                    break;
+                }
             }
         }
 

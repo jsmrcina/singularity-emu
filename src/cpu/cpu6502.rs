@@ -96,7 +96,14 @@ impl<'a> CPU6502<'a>
 
     pub fn set_flag(&mut self, f: Flags6502, b: bool)
     {
-        self.status = self.status | ((b as u8) << (f as u8));
+        if b
+        {
+            self.status |= f as u8;
+        }
+        else
+        {
+            self.status &= !(f as u8)
+        }
     }
 
     pub fn get_pc(&self) -> u16
@@ -1033,7 +1040,7 @@ impl<'a> CPU6502<'a>
     {
         if self.cycles == 0
         {
-            self.opcode = self.read(self.pc);
+             self.opcode = self.read(self.pc);
 
             // TODO: Why?
             self.set_flag(Flags6502::U, true);
@@ -1051,18 +1058,34 @@ impl<'a> CPU6502<'a>
             self.set_flag(Flags6502::U, true);
         }
 
-        self.cycles -= 1;
+         self.cycles -= 1;
     }
 
     pub fn complete(&self) -> bool
     {
-        // TODO
-        return true;
+        return self.cycles == 0;
     }
 
     pub fn reset(&mut self)
     {
-        // TODO
+        self.addr_abs = 0xFFFC;
+        let lo: u8 = self.read(self.addr_abs + 0);
+        let hi: u8 = self.read(self.addr_abs + 1);
+    
+        self.pc = ((hi as u16) << 8) | lo as u16;
+
+        self.a = 0;
+        self.x = 0;
+        self.y = 0;
+        self.stkp = 0xFD;
+
+        self.status = Flags6502::U as u8;
+
+        self.addr_rel = 0x0000;
+        self.addr_abs = 0x0000;
+        self.fetched_data = 0x00;
+
+        self.cycles = 8;
     }
 
     pub fn irq(&mut self)
