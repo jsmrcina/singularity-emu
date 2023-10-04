@@ -18,7 +18,8 @@ impl MainBus
 {
     pub fn new() -> Self
     {
-        MainBus {
+        MainBus
+        {
             system_address_ranges: HashMap::new()
         }
     }
@@ -50,7 +51,12 @@ impl ReadWrite for MainBus
 
         match result
         {
-            Some(x) => (x.1.sys).as_ref().write(address, data),
+            Some(x) =>
+                match &x.1.sys
+                {
+                    Some(sys) => sys.borrow_mut().write(address, data),
+                    None => panic!("System not initialized")
+                }
             None => panic!("Failed to find a system which maps this address range"),
         }
     }
@@ -62,7 +68,12 @@ impl ReadWrite for MainBus
 
         match result
         {
-            Some(x) => x.1.sys.read(address),
+            Some(x) =>
+                match &x.1.sys
+                    {
+                        Some(sys) => sys.borrow_mut().read(address),
+                        None => panic!("System not initialized")
+                    }
             None => panic!("Failed to find a system which maps this address range"),
         }
     }

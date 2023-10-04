@@ -2,7 +2,7 @@ use crate::traits::ReadWrite;
 
 pub struct Ram
 {
-    buffer: [u8; 4096]
+    pub buffer: [u8; 65536]
 }
 
 impl Ram
@@ -11,7 +11,7 @@ impl Ram
     {
         Ram
         {
-            buffer: [0; 4096]
+            buffer: [0; 65536]
         }
     }
 }

@@ -1,12 +1,12 @@
 use bus::main_bus::MainBus;
 use memory::ram::Ram;
-use cpu::cpu6502::CPU6502;
+use cpu::cpu6502::{CPU6502, Flags6502};
 use traits::ReadWrite;
 use std::cell::RefCell;
 use std::rc::Rc;
 
 use ggez::event;
-use ggez::graphics::{self, Color};
+use ggez::graphics::{self};
 use ggez::{Context, GameResult};
 use ggez::glam::*;
 use ggez::graphics::Text;
@@ -19,56 +19,160 @@ pub mod mapper;
 
 struct MainState<'a>
 {
-    pos_x: f32,
-    bus: MainBus,
-    ram: Ram,
-    cpu: CPU6502<'a>
+    bus: Rc<RefCell<MainBus>>,
+    ram: Rc<RefCell<Ram>>,
+    cpu: Rc<RefCell<CPU6502<'a>>>
 }
 
 impl<'a> MainState<'a>
 {
     fn new() -> GameResult<MainState<'a>>
     {
-        let mut s = MainState
+        let s = MainState
         {
-            pos_x: 0.0,
-            bus: MainBus::new(),
-            ram: Ram::new(),
-            cpu: CPU6502::new()
+            bus: Rc::new(RefCell::new(MainBus::new())),
+            ram: Rc::new(RefCell::new(Ram::new())),
+            cpu: Rc::new(RefCell::new(CPU6502::new()))
         };
 
-        s.cpu.set_bus(Some(Rc::new(RefCell::new(s.bus))));
-        s.bus.add_system((0, 0xFFFF), "RAM".to_string(), &mut s.ram);
+        let ram_trait_object = Rc::clone(&s.ram) as Rc<RefCell<dyn ReadWrite>>;
+        s.bus.borrow_mut().add_system((0, 0xFFFF), "RAM".to_string(), Some(ram_trait_object));
+
+        let bus_trait_object = Rc::clone(&s.bus) as Rc<RefCell<dyn ReadWrite>>;
+        s.cpu.borrow_mut().set_bus(Some(bus_trait_object));
+
+        // Load some code into the emulator
+        let code_str = String::from("A2 0A 8E 00 00 A2 03 8E 01 00 AC 00 00 A9 00 18 6D 01 00 88 D0 FA 8D 02 00 EA EA EA");
+        let bytes: Vec<u8> = code_str
+            .split_whitespace()
+            .map(|s| u8::from_str_radix(s, 16).expect("Failed to parse hex string"))
+            .collect();
+
+        let mut offset: usize = 0;
+        for b in bytes
+        {
+            s.ram.borrow_mut().buffer[offset] = b;
+            offset += 1;
+        }
+
+        // Set the reset vector
+        s.ram.borrow_mut().buffer[0xFFFC] = 0x00;
+        s.ram.borrow_mut().buffer[0xFFFC] = 0x80;
+
+        s.cpu.borrow_mut().reset();
 
         Ok(s)
     }
 
-    fn draw_ram(&mut self, x: i32, y: i32, mut nAddr: u16, nRows: i32, nCols: i32, canvas: &mut ggez::graphics::Canvas)
-    {
-        let nRamX: f32 = x as f32;
-        let mut nRamY: f32 = y as f32;
+    const OFFSET_X: f32 = 16.0;
+    const OFFSET_Y: f32 = 14.0;
 
-        for _ in 0..nRows
+    fn draw_ram(&mut self, x: i32, y: i32, mut n_addr: u16, n_rows: i32, n_cols: i32, canvas: &mut ggez::graphics::Canvas)
+    {
+        let n_ram_x: f32 = x as f32;
+        let mut n_ram_y: f32 = y as f32;
+
+        for _ in 0..n_rows
         {
-            let mut sOffset: String = format!("${:04x}:", nAddr);
-            for _ in 0..nCols
+            let mut s_offset: String = format!("${:04x}:", n_addr);
+            for _ in 0..n_cols
             {
-                sOffset = sOffset + &format!(" {:02x}", self.bus.read(nAddr));
-                nAddr = nAddr + 1;
+                s_offset = s_offset + &format!(" {:02x}", self.bus.borrow().read(n_addr));
+                n_addr = n_addr + 1;
             }
-            let text = Text::new(sOffset);
-            canvas.draw(&text, Vec2::new(nRamX, nRamY));
-            nRamY = nRamY + 10.0;
+            let text = Text::new(s_offset);
+            canvas.draw(&text, Vec2::new(n_ram_x, n_ram_y));
+            n_ram_y = n_ram_y + MainState::OFFSET_Y;
         }
+    }
+
+    fn draw_cpu(&mut self, x: f32, y: f32, canvas: &mut ggez::graphics::Canvas)
+    {
+        canvas.draw(&Text::new("Status"), Vec2::new(x, y));
+        let mut num_offset: f32 = 0.0;
+
+        let color = if self.cpu.borrow().get_flag(Flags6502::N) == 1 { graphics::Color::GREEN } else { graphics::Color::RED };
+        canvas.draw(&Text::new("N"), graphics::DrawParam::new().color(color).dest(Vec2::new(x + 64.0 + (MainState::OFFSET_X * num_offset), y)));
+        num_offset += 1.0;
+
+        let color = if self.cpu.borrow().get_flag(Flags6502::N) == 1 { graphics::Color::GREEN } else { graphics::Color::RED };
+        canvas.draw(&Text::new("V"), graphics::DrawParam::new().color(color).dest(Vec2::new(x + 64.0 + (MainState::OFFSET_X * num_offset), y)));
+        num_offset += 1.0;
+
+        let color = if self.cpu.borrow().get_flag(Flags6502::N) == 1 { graphics::Color::GREEN } else { graphics::Color::RED };
+        canvas.draw(&Text::new("-"), graphics::DrawParam::new().color(color).dest(Vec2::new(x + 64.0 + (MainState::OFFSET_X * num_offset), y)));
+        num_offset += 1.0;
+
+        let color = if self.cpu.borrow().get_flag(Flags6502::N) == 1 { graphics::Color::GREEN } else { graphics::Color::RED };
+        canvas.draw(&Text::new("B"), graphics::DrawParam::new().color(color).dest(Vec2::new(x + 64.0 + (MainState::OFFSET_X * num_offset), y)));
+        num_offset += 1.0;
+
+        let color = if self.cpu.borrow().get_flag(Flags6502::N) == 1 { graphics::Color::GREEN } else { graphics::Color::RED };
+        canvas.draw(&Text::new("D"), graphics::DrawParam::new().color(color).dest(Vec2::new(x + 64.0 + (MainState::OFFSET_X * num_offset), y)));
+        num_offset += 1.0;
+
+        let color = if self.cpu.borrow().get_flag(Flags6502::N) == 1 { graphics::Color::GREEN } else { graphics::Color::RED };
+        canvas.draw(&Text::new("I"), graphics::DrawParam::new().color(color).dest(Vec2::new(x + 64.0 + (MainState::OFFSET_X * num_offset), y)));
+        num_offset += 1.0;
+
+        let color = if self.cpu.borrow().get_flag(Flags6502::N) == 1 { graphics::Color::GREEN } else { graphics::Color::RED };
+        canvas.draw(&Text::new("Z"), graphics::DrawParam::new().color(color).dest(Vec2::new(x + 64.0 + (MainState::OFFSET_X * num_offset), y)));
+        num_offset += 1.0;
+
+        let color = if self.cpu.borrow().get_flag(Flags6502::N) == 1 { graphics::Color::GREEN } else { graphics::Color::RED };
+        canvas.draw(&Text::new("C"), graphics::DrawParam::new().color(color).dest(Vec2::new(x + 64.0 + (MainState::OFFSET_X * num_offset), y)));
+        
+        num_offset = 1.0;
+
+        canvas.draw(&Text::new(format!("PC: ${:04x}", self.cpu.borrow().get_pc())), Vec2::new(x, y + (MainState::OFFSET_Y * num_offset)));
+        num_offset += 1.0;
+
+        canvas.draw(&Text::new(format!("A: ${:02x} [{:02}]", self.cpu.borrow().get_a(), self.cpu.borrow().get_a())), 
+            Vec2::new(x, y + (MainState::OFFSET_Y * num_offset)));
+        num_offset += 1.0;
+
+        canvas.draw(&Text::new(format!("X: ${:02x} [{:02}]", self.cpu.borrow().get_x(), self.cpu.borrow().get_x())),
+            Vec2::new(x, y + (MainState::OFFSET_Y * num_offset)));
+        num_offset += 1.0;
+
+        canvas.draw(&Text::new(format!("Y: ${:02x} [{:02}]", self.cpu.borrow().get_y(), self.cpu.borrow().get_y())),
+            Vec2::new(x, y + (MainState::OFFSET_Y * num_offset)));
+        num_offset += 1.0;
+
+        canvas.draw(&Text::new(format!("Stack P: ${:04x}", self.cpu.borrow().get_stkp())), Vec2::new(x, y + (MainState::OFFSET_Y * num_offset)));
+
+        // TODO: Implement disassembly
+
     }
 }
 
 impl<'a> event::EventHandler<ggez::GameError> for MainState<'a>
 {
-    fn update(&mut self, _ctx: &mut Context) -> GameResult
+    fn update(&mut self, ctx: &mut Context) -> GameResult
     {
+        if ctx.keyboard.is_key_just_pressed(ggez::input::keyboard::KeyCode::Space)
+        {
+            while !self.cpu.borrow().complete()
+            {
+                self.cpu.borrow_mut().clock_tick();
+            }
+        }
 
-        self.pos_x = self.pos_x % 800.0 + 1.0;
+        if ctx.keyboard.is_key_just_pressed(ggez::input::keyboard::KeyCode::R)
+        {
+            self.cpu.borrow_mut().reset();
+        }
+
+        if ctx.keyboard.is_key_just_pressed(ggez::input::keyboard::KeyCode::I)
+        {
+            self.cpu.borrow_mut().irq();
+        }
+
+        if ctx.keyboard.is_key_just_pressed(ggez::input::keyboard::KeyCode::N)
+        {
+            self.cpu.borrow_mut().nmi();
+        }
+        
         Ok(())
     }
 
@@ -81,6 +185,8 @@ impl<'a> event::EventHandler<ggez::GameError> for MainState<'a>
         );
 
         MainState::<'a>::draw_ram(self, 2, 2, 0x0000, 16, 16, &mut canvas);
+        MainState::<'a>::draw_cpu(self, 475.0, 2.0, &mut canvas);
+        
         canvas.finish(ctx)?;
         Ok(())
     }

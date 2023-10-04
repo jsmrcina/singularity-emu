@@ -91,12 +91,37 @@ impl<'a> CPU6502<'a>
 
     pub fn get_flag(&self, f: Flags6502) -> u8
     {
-        return self.status & (1 << (f as u8));
+        return self.status & (f as u8);
     }
 
     pub fn set_flag(&mut self, f: Flags6502, b: bool)
     {
         self.status = self.status | ((b as u8) << (f as u8));
+    }
+
+    pub fn get_pc(&self) -> u16
+    {
+        return self.pc;
+    }
+
+    pub fn get_a(&self) -> u8
+    {
+        return self.a;
+    }
+
+    pub fn get_x(&self) -> u8
+    {
+        return self.x;
+    }
+
+    pub fn get_y(&self) -> u8
+    {
+        return self.y;
+    }
+
+    pub fn get_stkp(&self) -> u8
+    {
+        return self.stkp;
     }
 
     // #region Addressing Modes
@@ -306,8 +331,8 @@ impl<'a> CPU6502<'a>
         //       Positive Number + Negative Number = Either Result -> Cannot Overflow
         //       Positive Number + Positive Number = Positive Result -> OK! No Overflow
         //       Negative Number + Negative Number = Negative Result -> OK! NO Overflow
-        let V: u16 = (!(self.a as u16 ^ self.fetched_data as u16)) & ((self.a as u16 ^ temp) & 0x0080);
-        self.set_flag(Flags6502::V, V != 0);
+        let v: u16 = (!(self.a as u16 ^ self.fetched_data as u16)) & ((self.a as u16 ^ temp) & 0x0080);
+        self.set_flag(Flags6502::V, v != 0);
 
         self.set_flag(Flags6502::N, temp & 0x80 == 0x80);
 
@@ -1029,9 +1054,26 @@ impl<'a> CPU6502<'a>
         self.cycles -= 1;
     }
 
-    pub fn reset(&mut self) {}
-    pub fn irq(&mut self) {}
-    pub fn nmi(&mut self) {}
+    pub fn complete(&self) -> bool
+    {
+        // TODO
+        return true;
+    }
+
+    pub fn reset(&mut self)
+    {
+        // TODO
+    }
+
+    pub fn irq(&mut self)
+    {
+        // TODO
+    }
+
+    pub fn nmi(&mut self)
+    {
+        // TODO
+    }
 
     // Helpers
     pub fn fetch(&mut self) -> u8
