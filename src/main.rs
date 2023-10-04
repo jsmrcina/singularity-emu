@@ -4,6 +4,7 @@ use cpu::cpu6502::{CPU6502, Flags6502};
 use traits::ReadWrite;
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::collections::BTreeMap;
 
 use ggez::event;
 use ggez::graphics::{self};
@@ -21,18 +22,20 @@ struct MainState<'a>
 {
     bus: Rc<RefCell<MainBus>>,
     ram: Rc<RefCell<Ram>>,
-    cpu: Rc<RefCell<CPU6502<'a>>>
+    cpu: Rc<RefCell<CPU6502<'a>>>,
+    map_asm: BTreeMap<u16, String>
 }
 
 impl<'a> MainState<'a>
 {
     fn new() -> GameResult<MainState<'a>>
     {
-        let s = MainState
+        let mut s = MainState
         {
             bus: Rc::new(RefCell::new(MainBus::new())),
             ram: Rc::new(RefCell::new(Ram::new())),
-            cpu: Rc::new(RefCell::new(CPU6502::new()))
+            cpu: Rc::new(RefCell::new(CPU6502::new())),
+            map_asm: BTreeMap::new()
         };
 
         let ram_trait_object = Rc::clone(&s.ram) as Rc<RefCell<dyn ReadWrite>>;
@@ -59,6 +62,10 @@ impl<'a> MainState<'a>
         s.ram.borrow_mut().buffer[0xFFFC] = 0x00;
         s.ram.borrow_mut().buffer[0xFFFD] = 0x80;
 
+        // Dissemble code into our main state so we can render it
+        s.map_asm = s.cpu.borrow().disassemble(0x0000, 0xFFFF);
+
+        // Reset the CPU
         s.cpu.borrow_mut().reset();
 
         Ok(s)
@@ -144,6 +151,25 @@ impl<'a> MainState<'a>
         // TODO: Implement disassembly
 
     }
+
+    fn draw_code(&mut self, x: f32, y: f32, n_lines: i32, canvas: &mut ggez::graphics::Canvas)
+    {
+        // TODO: Show both future and past
+        let mut num_offset: i32 = 0;
+        for (_, value) in self.map_asm.range(self.cpu.borrow().get_pc()..)
+        {
+            canvas.draw(&Text::new(value), Vec2::new(x, y + (MainState::OFFSET_Y * num_offset as f32)));
+            num_offset += 1;
+            println!("{:04x}", num_offset);
+
+            if num_offset == n_lines
+            {
+                break;
+            }
+        }
+    }
+
+
 }
 
 impl<'a> event::EventHandler<ggez::GameError> for MainState<'a>
@@ -192,6 +218,7 @@ impl<'a> event::EventHandler<ggez::GameError> for MainState<'a>
 
         MainState::<'a>::draw_ram(self, 2, 2, 0x0000, 16, 16, &mut canvas);
         MainState::<'a>::draw_cpu(self, 475.0, 2.0, &mut canvas);
+        MainState::<'a>::draw_code(self, 475.0, 100.0, 27, &mut canvas);
         
         canvas.finish(ctx)?;
         Ok(())
