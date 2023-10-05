@@ -16,15 +16,15 @@ pub enum Flags6502
     N = (1 << 7), // Negative
 }
 
-struct Instruction<'a>
+struct Instruction
 {
     name: String,
-    op: fn(&mut CPU6502<'a>) -> u8,
-    addr_mode: fn(&mut CPU6502<'a>) -> u8,
+    op: fn(&mut CPU6502) -> u8,
+    addr_mode: fn(&mut CPU6502) -> u8,
     cycles: u8
 }
 
-pub struct CPU6502<'a>
+pub struct CPU6502
 {
     bus: Option<Rc<RefCell<dyn ReadWrite>>>,
     a: u8,
@@ -38,10 +38,10 @@ pub struct CPU6502<'a>
     addr_rel: u16,
     opcode: u8,
     cycles: u8,
-    ins: [Instruction<'a>; 256]
+    ins: [Instruction; 256]
 }
 
-impl<'a> CPU6502<'a>
+impl CPU6502
 {
     const STACK_START_ADDRESS: u16 = 0x1000;
     const INTERRUPT_VECTOR: [u16; 2] = [0xFFFE, 0xFFFF];
@@ -1251,7 +1251,7 @@ impl<'a> CPU6502<'a>
 
 }
 
-impl<'a> ReadWrite for CPU6502<'a>
+impl ReadWrite for CPU6502
 {
     fn write(&mut self, address: u16, data: u8)
     {

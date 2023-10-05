@@ -19,17 +19,17 @@ pub mod memory;
 pub mod cpu;
 pub mod mapper;
 
-struct MainState<'a>
+struct MainState
 {
     bus: Rc<RefCell<MainBus>>,
     ram: Rc<RefCell<Ram>>,
-    cpu: Rc<RefCell<CPU6502<'a>>>,
+    cpu: Rc<RefCell<CPU6502>>,
     map_asm: BTreeMap<u16, String>
 }
 
-impl<'a> MainState<'a>
+impl MainState
 {
-    fn new() -> GameResult<MainState<'a>>
+    fn new() -> GameResult<MainState>
     {
         let mut s = MainState
         {
@@ -194,7 +194,7 @@ impl<'a> MainState<'a>
 
 }
 
-impl<'a> event::EventHandler<ggez::GameError> for MainState<'a>
+impl event::EventHandler<ggez::GameError> for MainState
 {
     fn update(&mut self, ctx: &mut Context) -> GameResult
     {
@@ -238,10 +238,10 @@ impl<'a> event::EventHandler<ggez::GameError> for MainState<'a>
             graphics::Color::from([0.0, 0.0, 1.0, 1.0]),
         );
 
-        MainState::<'a>::draw_ram(self, 2, 2, 0x0000, 16, 16, &mut canvas);
-        MainState::<'a>::draw_ram(self, 2, 250, 0x8000, 16, 16, &mut canvas);
-        MainState::<'a>::draw_cpu(self, 475.0, 2.0, &mut canvas);
-        MainState::<'a>::draw_code(self, 475.0, 100.0, 27, &mut canvas);
+        MainState::draw_ram(self, 2, 2, 0x0000, 16, 16, &mut canvas);
+        MainState::draw_ram(self, 2, 250, 0x8000, 16, 16, &mut canvas);
+        MainState::draw_cpu(self, 475.0, 2.0, &mut canvas);
+        MainState::draw_code(self, 475.0, 100.0, 27, &mut canvas);
         
         canvas.draw(&Text::new("SPACE = Step Instruction    R = RESET    I = IRQ    N = NMI"),
             Vec2::new(10.0, 500.0));
