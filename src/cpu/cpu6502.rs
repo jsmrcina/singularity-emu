@@ -1,4 +1,5 @@
 use crate::traits::ReadWrite;
+use crate::cartridge::cart::Cart;
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -19,14 +20,15 @@ pub enum Flags6502
 struct Instruction
 {
     name: String,
-    op: fn(&mut CPU6502) -> u8,
-    addr_mode: fn(&mut CPU6502) -> u8,
+    op: fn(&mut Cpu6502) -> u8,
+    addr_mode: fn(&mut Cpu6502) -> u8,
     cycles: u8
 }
 
-pub struct CPU6502
+pub struct Cpu6502
 {
     bus: Option<Rc<RefCell<dyn ReadWrite>>>,
+    cartridge: Option<Rc<RefCell<Cart>>>,
     a: u8,
     x: u8,
     y: u8,
@@ -41,16 +43,17 @@ pub struct CPU6502
     ins: [Instruction; 256]
 }
 
-impl CPU6502
+impl Cpu6502
 {
     const STACK_START_ADDRESS: u16 = 0x1000;
     const INTERRUPT_VECTOR: [u16; 2] = [0xFFFE, 0xFFFF];
 
     pub fn new() -> Self
     {
-        let cpu = CPU6502
+        let cpu = Cpu6502
         {
             bus: None,
+            cartridge: None,
             a: 0x00,
             x: 0x00,
             y: 0x00,
@@ -63,22 +66,22 @@ impl CPU6502
             opcode: 0x00,
             cycles: 0x00,
             ins: [
-                Instruction { name: String::from("BRK"), op: CPU6502::brk, addr_mode: CPU6502::imm, cycles: 7 }, Instruction { name: String::from("ORA"), op: CPU6502::ora, addr_mode: CPU6502::izx, cycles: 6 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 8 }, Instruction { name: String::from("???"), op: CPU6502::nop, addr_mode: CPU6502::imp, cycles: 3 }, Instruction { name: String::from("ORA"), op: CPU6502::ora, addr_mode: CPU6502::zp0, cycles: 3 }, Instruction { name: String::from("ASL"), op: CPU6502::asl, addr_mode: CPU6502::zp0, cycles: 5 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 5 }, Instruction { name: String::from("PHP"), op: CPU6502::php, addr_mode: CPU6502::imp, cycles: 3 }, Instruction { name: String::from("ORA"), op: CPU6502::ora, addr_mode: CPU6502::imm, cycles: 2 }, Instruction { name: String::from("ASL"), op: CPU6502::asl, addr_mode: CPU6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: CPU6502::nop, addr_mode: CPU6502::imp, cycles: 4 }, Instruction { name: String::from("ORA"), op: CPU6502::ora, addr_mode: CPU6502::abs, cycles: 4 }, Instruction { name: String::from("ASL"), op: CPU6502::asl, addr_mode: CPU6502::abs, cycles: 6 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 6 },
-                Instruction { name: String::from("BPL"), op: CPU6502::bpl, addr_mode: CPU6502::rel, cycles: 2 }, Instruction { name: String::from("ORA"), op: CPU6502::ora, addr_mode: CPU6502::izy, cycles: 5 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 8 }, Instruction { name: String::from("???"), op: CPU6502::nop, addr_mode: CPU6502::imp, cycles: 4 }, Instruction { name: String::from("ORA"), op: CPU6502::ora, addr_mode: CPU6502::zpx, cycles: 4 }, Instruction { name: String::from("ASL"), op: CPU6502::asl, addr_mode: CPU6502::zpx, cycles: 6 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 6 }, Instruction { name: String::from("CLC"), op: CPU6502::clc, addr_mode: CPU6502::imp, cycles: 2 }, Instruction { name: String::from("ORA"), op: CPU6502::ora, addr_mode: CPU6502::aby, cycles: 4 }, Instruction { name: String::from("???"), op: CPU6502::nop, addr_mode: CPU6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 7 }, Instruction { name: String::from("???"), op: CPU6502::nop, addr_mode: CPU6502::imp, cycles: 4 }, Instruction { name: String::from("ORA"), op: CPU6502::ora, addr_mode: CPU6502::abx, cycles: 4 }, Instruction { name: String::from("ASL"), op: CPU6502::asl, addr_mode: CPU6502::abx, cycles: 7 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 7 },
-                Instruction { name: String::from("JSR"), op: CPU6502::jsr, addr_mode: CPU6502::abs, cycles: 6 }, Instruction { name: String::from("AND"), op: CPU6502::and, addr_mode: CPU6502::izx, cycles: 6 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 8 }, Instruction { name: String::from("BIT"), op: CPU6502::bit, addr_mode: CPU6502::zp0, cycles: 3 }, Instruction { name: String::from("AND"), op: CPU6502::and, addr_mode: CPU6502::zp0, cycles: 3 }, Instruction { name: String::from("ROL"), op: CPU6502::rol, addr_mode: CPU6502::zp0, cycles: 5 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 5 }, Instruction { name: String::from("PLP"), op: CPU6502::plp, addr_mode: CPU6502::imp, cycles: 4 }, Instruction { name: String::from("AND"), op: CPU6502::and, addr_mode: CPU6502::imm, cycles: 2 }, Instruction { name: String::from("ROL"), op: CPU6502::rol, addr_mode: CPU6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 2 }, Instruction { name: String::from("BIT"), op: CPU6502::bit, addr_mode: CPU6502::abs, cycles: 4 }, Instruction { name: String::from("AND"), op: CPU6502::and, addr_mode: CPU6502::abs, cycles: 4 }, Instruction { name: String::from("ROL"), op: CPU6502::rol, addr_mode: CPU6502::abs, cycles: 6 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 6 },
-                Instruction { name: String::from("BMI"), op: CPU6502::bmi, addr_mode: CPU6502::rel, cycles: 2 }, Instruction { name: String::from("AND"), op: CPU6502::and, addr_mode: CPU6502::izy, cycles: 5 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 8 }, Instruction { name: String::from("???"), op: CPU6502::nop, addr_mode: CPU6502::imp, cycles: 4 }, Instruction { name: String::from("AND"), op: CPU6502::and, addr_mode: CPU6502::zpx, cycles: 4 }, Instruction { name: String::from("ROL"), op: CPU6502::rol, addr_mode: CPU6502::zpx, cycles: 6 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 6 }, Instruction { name: String::from("SEC"), op: CPU6502::sec, addr_mode: CPU6502::imp, cycles: 2 }, Instruction { name: String::from("AND"), op: CPU6502::and, addr_mode: CPU6502::aby, cycles: 4 }, Instruction { name: String::from("???"), op: CPU6502::nop, addr_mode: CPU6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 7 }, Instruction { name: String::from("???"), op: CPU6502::nop, addr_mode: CPU6502::imp, cycles: 4 }, Instruction { name: String::from("AND"), op: CPU6502::and, addr_mode: CPU6502::abx, cycles: 4 }, Instruction { name: String::from("ROL"), op: CPU6502::rol, addr_mode: CPU6502::abx, cycles: 7 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 7 },
-                Instruction { name: String::from("RTI"), op: CPU6502::rti, addr_mode: CPU6502::imp, cycles: 6 }, Instruction { name: String::from("EOR"), op: CPU6502::eor, addr_mode: CPU6502::izx, cycles: 6 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 8 }, Instruction { name: String::from("???"), op: CPU6502::nop, addr_mode: CPU6502::imp, cycles: 3 }, Instruction { name: String::from("EOR"), op: CPU6502::eor, addr_mode: CPU6502::zp0, cycles: 3 }, Instruction { name: String::from("LSR"), op: CPU6502::lsr, addr_mode: CPU6502::zp0, cycles: 5 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 5 }, Instruction { name: String::from("PHA"), op: CPU6502::pha, addr_mode: CPU6502::imp, cycles: 3 }, Instruction { name: String::from("EOR"), op: CPU6502::eor, addr_mode: CPU6502::imm, cycles: 2 }, Instruction { name: String::from("LSR"), op: CPU6502::lsr, addr_mode: CPU6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 2 }, Instruction { name: String::from("JMP"), op: CPU6502::jmp, addr_mode: CPU6502::abs, cycles: 3 }, Instruction { name: String::from("EOR"), op: CPU6502::eor, addr_mode: CPU6502::abs, cycles: 4 }, Instruction { name: String::from("LSR"), op: CPU6502::lsr, addr_mode: CPU6502::abs, cycles: 6 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 6 },
-                Instruction { name: String::from("BVC"), op: CPU6502::bvc, addr_mode: CPU6502::rel, cycles: 2 }, Instruction { name: String::from("EOR"), op: CPU6502::eor, addr_mode: CPU6502::izy, cycles: 5 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 8 }, Instruction { name: String::from("???"), op: CPU6502::nop, addr_mode: CPU6502::imp, cycles: 4 }, Instruction { name: String::from("EOR"), op: CPU6502::eor, addr_mode: CPU6502::zpx, cycles: 4 }, Instruction { name: String::from("LSR"), op: CPU6502::lsr, addr_mode: CPU6502::zpx, cycles: 6 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 6 }, Instruction { name: String::from("CLI"), op: CPU6502::cli, addr_mode: CPU6502::imp, cycles: 2 }, Instruction { name: String::from("EOR"), op: CPU6502::eor, addr_mode: CPU6502::aby, cycles: 4 }, Instruction { name: String::from("???"), op: CPU6502::nop, addr_mode: CPU6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 7 }, Instruction { name: String::from("???"), op: CPU6502::nop, addr_mode: CPU6502::imp, cycles: 4 }, Instruction { name: String::from("EOR"), op: CPU6502::eor, addr_mode: CPU6502::abx, cycles: 4 }, Instruction { name: String::from("LSR"), op: CPU6502::lsr, addr_mode: CPU6502::abx, cycles: 7 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 7 },
-                Instruction { name: String::from("RTS"), op: CPU6502::rts, addr_mode: CPU6502::imp, cycles: 6 }, Instruction { name: String::from("ADC"), op: CPU6502::adc, addr_mode: CPU6502::izx, cycles: 6 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 8 }, Instruction { name: String::from("???"), op: CPU6502::nop, addr_mode: CPU6502::imp, cycles: 3 }, Instruction { name: String::from("ADC"), op: CPU6502::adc, addr_mode: CPU6502::zp0, cycles: 3 }, Instruction { name: String::from("ROR"), op: CPU6502::ror, addr_mode: CPU6502::zp0, cycles: 5 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 5 }, Instruction { name: String::from("PLA"), op: CPU6502::pla, addr_mode: CPU6502::imp, cycles: 4 }, Instruction { name: String::from("ADC"), op: CPU6502::adc, addr_mode: CPU6502::imm, cycles: 2 }, Instruction { name: String::from("ROR"), op: CPU6502::ror, addr_mode: CPU6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 2 }, Instruction { name: String::from("JMP"), op: CPU6502::jmp, addr_mode: CPU6502::ind, cycles: 5 }, Instruction { name: String::from("ADC"), op: CPU6502::adc, addr_mode: CPU6502::abs, cycles: 4 }, Instruction { name: String::from("ROR"), op: CPU6502::ror, addr_mode: CPU6502::abs, cycles: 6 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 6 },
-                Instruction { name: String::from("BVS"), op: CPU6502::bvs, addr_mode: CPU6502::rel, cycles: 2 }, Instruction { name: String::from("ADC"), op: CPU6502::adc, addr_mode: CPU6502::izy, cycles: 5 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 8 }, Instruction { name: String::from("???"), op: CPU6502::nop, addr_mode: CPU6502::imp, cycles: 4 }, Instruction { name: String::from("ADC"), op: CPU6502::adc, addr_mode: CPU6502::zpx, cycles: 4 }, Instruction { name: String::from("ROR"), op: CPU6502::ror, addr_mode: CPU6502::zpx, cycles: 6 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 6 }, Instruction { name: String::from("SEI"), op: CPU6502::sei, addr_mode: CPU6502::imp, cycles: 2 }, Instruction { name: String::from("ADC"), op: CPU6502::adc, addr_mode: CPU6502::aby, cycles: 4 }, Instruction { name: String::from("???"), op: CPU6502::nop, addr_mode: CPU6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 7 }, Instruction { name: String::from("???"), op: CPU6502::nop, addr_mode: CPU6502::imp, cycles: 4 }, Instruction { name: String::from("ADC"), op: CPU6502::adc, addr_mode: CPU6502::abx, cycles: 4 }, Instruction { name: String::from("ROR"), op: CPU6502::ror, addr_mode: CPU6502::abx, cycles: 7 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 7 },
-                Instruction { name: String::from("???"), op: CPU6502::nop, addr_mode: CPU6502::imp, cycles: 2 }, Instruction { name: String::from("STA"), op: CPU6502::sta, addr_mode: CPU6502::izx, cycles: 6 }, Instruction { name: String::from("???"), op: CPU6502::nop, addr_mode: CPU6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 6 }, Instruction { name: String::from("STY"), op: CPU6502::sty, addr_mode: CPU6502::zp0, cycles: 3 }, Instruction { name: String::from("STA"), op: CPU6502::sta, addr_mode: CPU6502::zp0, cycles: 3 }, Instruction { name: String::from("STX"), op: CPU6502::stx, addr_mode: CPU6502::zp0, cycles: 3 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 3 }, Instruction { name: String::from("DEY"), op: CPU6502::dey, addr_mode: CPU6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: CPU6502::nop, addr_mode: CPU6502::imp, cycles: 2 }, Instruction { name: String::from("TXA"), op: CPU6502::txa, addr_mode: CPU6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 2 }, Instruction { name: String::from("STY"), op: CPU6502::sty, addr_mode: CPU6502::abs, cycles: 4 }, Instruction { name: String::from("STA"), op: CPU6502::sta, addr_mode: CPU6502::abs, cycles: 4 }, Instruction { name: String::from("STX"), op: CPU6502::stx, addr_mode: CPU6502::abs, cycles: 4 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 4 },
-                Instruction { name: String::from("BCC"), op: CPU6502::bcc, addr_mode: CPU6502::rel, cycles: 2 }, Instruction { name: String::from("STA"), op: CPU6502::sta, addr_mode: CPU6502::izy, cycles: 6 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 6 }, Instruction { name: String::from("STY"), op: CPU6502::sty, addr_mode: CPU6502::zpx, cycles: 4 }, Instruction { name: String::from("STA"), op: CPU6502::sta, addr_mode: CPU6502::zpx, cycles: 4 }, Instruction { name: String::from("STX"), op: CPU6502::stx, addr_mode: CPU6502::zpy, cycles: 4 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 4 }, Instruction { name: String::from("TYA"), op: CPU6502::tya, addr_mode: CPU6502::imp, cycles: 2 }, Instruction { name: String::from("STA"), op: CPU6502::sta, addr_mode: CPU6502::aby, cycles: 5 }, Instruction { name: String::from("TXS"), op: CPU6502::txs, addr_mode: CPU6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 5 }, Instruction { name: String::from("???"), op: CPU6502::nop, addr_mode: CPU6502::imp, cycles: 5 }, Instruction { name: String::from("STA"), op: CPU6502::sta, addr_mode: CPU6502::abx, cycles: 5 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 5 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 5 },
-                Instruction { name: String::from("LDY"), op: CPU6502::ldy, addr_mode: CPU6502::imm, cycles: 2 }, Instruction { name: String::from("LDA"), op: CPU6502::lda, addr_mode: CPU6502::izx, cycles: 6 }, Instruction { name: String::from("LDX"), op: CPU6502::ldx, addr_mode: CPU6502::imm, cycles: 2 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 6 }, Instruction { name: String::from("LDY"), op: CPU6502::ldy, addr_mode: CPU6502::zp0, cycles: 3 }, Instruction { name: String::from("LDA"), op: CPU6502::lda, addr_mode: CPU6502::zp0, cycles: 3 }, Instruction { name: String::from("LDX"), op: CPU6502::ldx, addr_mode: CPU6502::zp0, cycles: 3 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 3 }, Instruction { name: String::from("TAY"), op: CPU6502::tay, addr_mode: CPU6502::imp, cycles: 2 }, Instruction { name: String::from("LDA"), op: CPU6502::lda, addr_mode: CPU6502::imm, cycles: 2 }, Instruction { name: String::from("TAX"), op: CPU6502::tax, addr_mode: CPU6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 2 }, Instruction { name: String::from("LDY"), op: CPU6502::ldy, addr_mode: CPU6502::abs, cycles: 4 }, Instruction { name: String::from("LDA"), op: CPU6502::lda, addr_mode: CPU6502::abs, cycles: 4 }, Instruction { name: String::from("LDX"), op: CPU6502::ldx, addr_mode: CPU6502::abs, cycles: 4 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 4 },
-                Instruction { name: String::from("BCS"), op: CPU6502::bcs, addr_mode: CPU6502::rel, cycles: 2 }, Instruction { name: String::from("LDA"), op: CPU6502::lda, addr_mode: CPU6502::izy, cycles: 5 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 5 }, Instruction { name: String::from("LDY"), op: CPU6502::ldy, addr_mode: CPU6502::zpx, cycles: 4 }, Instruction { name: String::from("LDA"), op: CPU6502::lda, addr_mode: CPU6502::zpx, cycles: 4 }, Instruction { name: String::from("LDX"), op: CPU6502::ldx, addr_mode: CPU6502::zpy, cycles: 4 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 4 }, Instruction { name: String::from("CLV"), op: CPU6502::clv, addr_mode: CPU6502::imp, cycles: 2 }, Instruction { name: String::from("LDA"), op: CPU6502::lda, addr_mode: CPU6502::aby, cycles: 4 }, Instruction { name: String::from("TSX"), op: CPU6502::tsx, addr_mode: CPU6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 4 }, Instruction { name: String::from("LDY"), op: CPU6502::ldy, addr_mode: CPU6502::abx, cycles: 4 }, Instruction { name: String::from("LDA"), op: CPU6502::lda, addr_mode: CPU6502::abx, cycles: 4 }, Instruction { name: String::from("LDX"), op: CPU6502::ldx, addr_mode: CPU6502::aby, cycles: 4 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 4 },
-                Instruction { name: String::from("CPY"), op: CPU6502::cpy, addr_mode: CPU6502::imm, cycles: 2 }, Instruction { name: String::from("CMP"), op: CPU6502::cmp, addr_mode: CPU6502::izx, cycles: 6 }, Instruction { name: String::from("???"), op: CPU6502::nop, addr_mode: CPU6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 8 }, Instruction { name: String::from("CPY"), op: CPU6502::cpy, addr_mode: CPU6502::zp0, cycles: 3 }, Instruction { name: String::from("CMP"), op: CPU6502::cmp, addr_mode: CPU6502::zp0, cycles: 3 }, Instruction { name: String::from("DEC"), op: CPU6502::dec, addr_mode: CPU6502::zp0, cycles: 5 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 5 }, Instruction { name: String::from("INY"), op: CPU6502::iny, addr_mode: CPU6502::imp, cycles: 2 }, Instruction { name: String::from("CMP"), op: CPU6502::cmp, addr_mode: CPU6502::imm, cycles: 2 }, Instruction { name: String::from("DEX"), op: CPU6502::dex, addr_mode: CPU6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 2 }, Instruction { name: String::from("CPY"), op: CPU6502::cpy, addr_mode: CPU6502::abs, cycles: 4 }, Instruction { name: String::from("CMP"), op: CPU6502::cmp, addr_mode: CPU6502::abs, cycles: 4 }, Instruction { name: String::from("DEC"), op: CPU6502::dec, addr_mode: CPU6502::abs, cycles: 6 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 6 },
-                Instruction { name: String::from("BNE"), op: CPU6502::bne, addr_mode: CPU6502::rel, cycles: 2 }, Instruction { name: String::from("CMP"), op: CPU6502::cmp, addr_mode: CPU6502::izy, cycles: 5 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 8 }, Instruction { name: String::from("???"), op: CPU6502::nop, addr_mode: CPU6502::imp, cycles: 4 }, Instruction { name: String::from("CMP"), op: CPU6502::cmp, addr_mode: CPU6502::zpx, cycles: 4 }, Instruction { name: String::from("DEC"), op: CPU6502::dec, addr_mode: CPU6502::zpx, cycles: 6 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 6 }, Instruction { name: String::from("CLD"), op: CPU6502::cld, addr_mode: CPU6502::imp, cycles: 2 }, Instruction { name: String::from("CMP"), op: CPU6502::cmp, addr_mode: CPU6502::aby, cycles: 4 }, Instruction { name: String::from("NOP"), op: CPU6502::nop, addr_mode: CPU6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 7 }, Instruction { name: String::from("???"), op: CPU6502::nop, addr_mode: CPU6502::imp, cycles: 4 }, Instruction { name: String::from("CMP"), op: CPU6502::cmp, addr_mode: CPU6502::abx, cycles: 4 }, Instruction { name: String::from("DEC"), op: CPU6502::dec, addr_mode: CPU6502::abx, cycles: 7 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 7 },
-                Instruction { name: String::from("CPX"), op: CPU6502::cpx, addr_mode: CPU6502::imm, cycles: 2 }, Instruction { name: String::from("SBC"), op: CPU6502::sbc, addr_mode: CPU6502::izx, cycles: 6 }, Instruction { name: String::from("???"), op: CPU6502::nop, addr_mode: CPU6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 8 }, Instruction { name: String::from("CPX"), op: CPU6502::cpx, addr_mode: CPU6502::zp0, cycles: 3 }, Instruction { name: String::from("SBC"), op: CPU6502::sbc, addr_mode: CPU6502::zp0, cycles: 3 }, Instruction { name: String::from("INC"), op: CPU6502::inc, addr_mode: CPU6502::zp0, cycles: 5 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 5 }, Instruction { name: String::from("INX"), op: CPU6502::inx, addr_mode: CPU6502::imp, cycles: 2 }, Instruction { name: String::from("SBC"), op: CPU6502::sbc, addr_mode: CPU6502::imm, cycles: 2 }, Instruction { name: String::from("NOP"), op: CPU6502::nop, addr_mode: CPU6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: CPU6502::sbc, addr_mode: CPU6502::imp, cycles: 2 }, Instruction { name: String::from("CPX"), op: CPU6502::cpx, addr_mode: CPU6502::abs, cycles: 4 }, Instruction { name: String::from("SBC"), op: CPU6502::sbc, addr_mode: CPU6502::abs, cycles: 4 }, Instruction { name: String::from("INC"), op: CPU6502::inc, addr_mode: CPU6502::abs, cycles: 6 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 6 },
-                Instruction { name: String::from("BEQ"), op: CPU6502::beq, addr_mode: CPU6502::rel, cycles: 2 }, Instruction { name: String::from("SBC"), op: CPU6502::sbc, addr_mode: CPU6502::izy, cycles: 5 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 8 }, Instruction { name: String::from("???"), op: CPU6502::nop, addr_mode: CPU6502::imp, cycles: 4 }, Instruction { name: String::from("SBC"), op: CPU6502::sbc, addr_mode: CPU6502::zpx, cycles: 4 }, Instruction { name: String::from("INC"), op: CPU6502::inc, addr_mode: CPU6502::zpx, cycles: 6 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 6 }, Instruction { name: String::from("SED"), op: CPU6502::sed, addr_mode: CPU6502::imp, cycles: 2 }, Instruction { name: String::from("SBC"), op: CPU6502::sbc, addr_mode: CPU6502::aby, cycles: 4 }, Instruction { name: String::from("NOP"), op: CPU6502::nop, addr_mode: CPU6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 7 }, Instruction { name: String::from("???"), op: CPU6502::nop, addr_mode: CPU6502::imp, cycles: 4 }, Instruction { name: String::from("SBC"), op: CPU6502::sbc, addr_mode: CPU6502::abx, cycles: 4 }, Instruction { name: String::from("INC"), op: CPU6502::inc, addr_mode: CPU6502::abx, cycles: 7 }, Instruction { name: String::from("???"), op: CPU6502::xxx, addr_mode: CPU6502::imp, cycles: 7 },
+                Instruction { name: String::from("BRK"), op: Cpu6502::brk, addr_mode: Cpu6502::imm, cycles: 7 }, Instruction { name: String::from("ORA"), op: Cpu6502::ora, addr_mode: Cpu6502::izx, cycles: 6 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 8 }, Instruction { name: String::from("???"), op: Cpu6502::nop, addr_mode: Cpu6502::imp, cycles: 3 }, Instruction { name: String::from("ORA"), op: Cpu6502::ora, addr_mode: Cpu6502::zp0, cycles: 3 }, Instruction { name: String::from("ASL"), op: Cpu6502::asl, addr_mode: Cpu6502::zp0, cycles: 5 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 5 }, Instruction { name: String::from("PHP"), op: Cpu6502::php, addr_mode: Cpu6502::imp, cycles: 3 }, Instruction { name: String::from("ORA"), op: Cpu6502::ora, addr_mode: Cpu6502::imm, cycles: 2 }, Instruction { name: String::from("ASL"), op: Cpu6502::asl, addr_mode: Cpu6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: Cpu6502::nop, addr_mode: Cpu6502::imp, cycles: 4 }, Instruction { name: String::from("ORA"), op: Cpu6502::ora, addr_mode: Cpu6502::abs, cycles: 4 }, Instruction { name: String::from("ASL"), op: Cpu6502::asl, addr_mode: Cpu6502::abs, cycles: 6 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 6 },
+                Instruction { name: String::from("BPL"), op: Cpu6502::bpl, addr_mode: Cpu6502::rel, cycles: 2 }, Instruction { name: String::from("ORA"), op: Cpu6502::ora, addr_mode: Cpu6502::izy, cycles: 5 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 8 }, Instruction { name: String::from("???"), op: Cpu6502::nop, addr_mode: Cpu6502::imp, cycles: 4 }, Instruction { name: String::from("ORA"), op: Cpu6502::ora, addr_mode: Cpu6502::zpx, cycles: 4 }, Instruction { name: String::from("ASL"), op: Cpu6502::asl, addr_mode: Cpu6502::zpx, cycles: 6 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 6 }, Instruction { name: String::from("CLC"), op: Cpu6502::clc, addr_mode: Cpu6502::imp, cycles: 2 }, Instruction { name: String::from("ORA"), op: Cpu6502::ora, addr_mode: Cpu6502::aby, cycles: 4 }, Instruction { name: String::from("???"), op: Cpu6502::nop, addr_mode: Cpu6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 7 }, Instruction { name: String::from("???"), op: Cpu6502::nop, addr_mode: Cpu6502::imp, cycles: 4 }, Instruction { name: String::from("ORA"), op: Cpu6502::ora, addr_mode: Cpu6502::abx, cycles: 4 }, Instruction { name: String::from("ASL"), op: Cpu6502::asl, addr_mode: Cpu6502::abx, cycles: 7 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 7 },
+                Instruction { name: String::from("JSR"), op: Cpu6502::jsr, addr_mode: Cpu6502::abs, cycles: 6 }, Instruction { name: String::from("AND"), op: Cpu6502::and, addr_mode: Cpu6502::izx, cycles: 6 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 8 }, Instruction { name: String::from("BIT"), op: Cpu6502::bit, addr_mode: Cpu6502::zp0, cycles: 3 }, Instruction { name: String::from("AND"), op: Cpu6502::and, addr_mode: Cpu6502::zp0, cycles: 3 }, Instruction { name: String::from("ROL"), op: Cpu6502::rol, addr_mode: Cpu6502::zp0, cycles: 5 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 5 }, Instruction { name: String::from("PLP"), op: Cpu6502::plp, addr_mode: Cpu6502::imp, cycles: 4 }, Instruction { name: String::from("AND"), op: Cpu6502::and, addr_mode: Cpu6502::imm, cycles: 2 }, Instruction { name: String::from("ROL"), op: Cpu6502::rol, addr_mode: Cpu6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 2 }, Instruction { name: String::from("BIT"), op: Cpu6502::bit, addr_mode: Cpu6502::abs, cycles: 4 }, Instruction { name: String::from("AND"), op: Cpu6502::and, addr_mode: Cpu6502::abs, cycles: 4 }, Instruction { name: String::from("ROL"), op: Cpu6502::rol, addr_mode: Cpu6502::abs, cycles: 6 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 6 },
+                Instruction { name: String::from("BMI"), op: Cpu6502::bmi, addr_mode: Cpu6502::rel, cycles: 2 }, Instruction { name: String::from("AND"), op: Cpu6502::and, addr_mode: Cpu6502::izy, cycles: 5 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 8 }, Instruction { name: String::from("???"), op: Cpu6502::nop, addr_mode: Cpu6502::imp, cycles: 4 }, Instruction { name: String::from("AND"), op: Cpu6502::and, addr_mode: Cpu6502::zpx, cycles: 4 }, Instruction { name: String::from("ROL"), op: Cpu6502::rol, addr_mode: Cpu6502::zpx, cycles: 6 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 6 }, Instruction { name: String::from("SEC"), op: Cpu6502::sec, addr_mode: Cpu6502::imp, cycles: 2 }, Instruction { name: String::from("AND"), op: Cpu6502::and, addr_mode: Cpu6502::aby, cycles: 4 }, Instruction { name: String::from("???"), op: Cpu6502::nop, addr_mode: Cpu6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 7 }, Instruction { name: String::from("???"), op: Cpu6502::nop, addr_mode: Cpu6502::imp, cycles: 4 }, Instruction { name: String::from("AND"), op: Cpu6502::and, addr_mode: Cpu6502::abx, cycles: 4 }, Instruction { name: String::from("ROL"), op: Cpu6502::rol, addr_mode: Cpu6502::abx, cycles: 7 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 7 },
+                Instruction { name: String::from("RTI"), op: Cpu6502::rti, addr_mode: Cpu6502::imp, cycles: 6 }, Instruction { name: String::from("EOR"), op: Cpu6502::eor, addr_mode: Cpu6502::izx, cycles: 6 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 8 }, Instruction { name: String::from("???"), op: Cpu6502::nop, addr_mode: Cpu6502::imp, cycles: 3 }, Instruction { name: String::from("EOR"), op: Cpu6502::eor, addr_mode: Cpu6502::zp0, cycles: 3 }, Instruction { name: String::from("LSR"), op: Cpu6502::lsr, addr_mode: Cpu6502::zp0, cycles: 5 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 5 }, Instruction { name: String::from("PHA"), op: Cpu6502::pha, addr_mode: Cpu6502::imp, cycles: 3 }, Instruction { name: String::from("EOR"), op: Cpu6502::eor, addr_mode: Cpu6502::imm, cycles: 2 }, Instruction { name: String::from("LSR"), op: Cpu6502::lsr, addr_mode: Cpu6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 2 }, Instruction { name: String::from("JMP"), op: Cpu6502::jmp, addr_mode: Cpu6502::abs, cycles: 3 }, Instruction { name: String::from("EOR"), op: Cpu6502::eor, addr_mode: Cpu6502::abs, cycles: 4 }, Instruction { name: String::from("LSR"), op: Cpu6502::lsr, addr_mode: Cpu6502::abs, cycles: 6 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 6 },
+                Instruction { name: String::from("BVC"), op: Cpu6502::bvc, addr_mode: Cpu6502::rel, cycles: 2 }, Instruction { name: String::from("EOR"), op: Cpu6502::eor, addr_mode: Cpu6502::izy, cycles: 5 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 8 }, Instruction { name: String::from("???"), op: Cpu6502::nop, addr_mode: Cpu6502::imp, cycles: 4 }, Instruction { name: String::from("EOR"), op: Cpu6502::eor, addr_mode: Cpu6502::zpx, cycles: 4 }, Instruction { name: String::from("LSR"), op: Cpu6502::lsr, addr_mode: Cpu6502::zpx, cycles: 6 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 6 }, Instruction { name: String::from("CLI"), op: Cpu6502::cli, addr_mode: Cpu6502::imp, cycles: 2 }, Instruction { name: String::from("EOR"), op: Cpu6502::eor, addr_mode: Cpu6502::aby, cycles: 4 }, Instruction { name: String::from("???"), op: Cpu6502::nop, addr_mode: Cpu6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 7 }, Instruction { name: String::from("???"), op: Cpu6502::nop, addr_mode: Cpu6502::imp, cycles: 4 }, Instruction { name: String::from("EOR"), op: Cpu6502::eor, addr_mode: Cpu6502::abx, cycles: 4 }, Instruction { name: String::from("LSR"), op: Cpu6502::lsr, addr_mode: Cpu6502::abx, cycles: 7 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 7 },
+                Instruction { name: String::from("RTS"), op: Cpu6502::rts, addr_mode: Cpu6502::imp, cycles: 6 }, Instruction { name: String::from("ADC"), op: Cpu6502::adc, addr_mode: Cpu6502::izx, cycles: 6 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 8 }, Instruction { name: String::from("???"), op: Cpu6502::nop, addr_mode: Cpu6502::imp, cycles: 3 }, Instruction { name: String::from("ADC"), op: Cpu6502::adc, addr_mode: Cpu6502::zp0, cycles: 3 }, Instruction { name: String::from("ROR"), op: Cpu6502::ror, addr_mode: Cpu6502::zp0, cycles: 5 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 5 }, Instruction { name: String::from("PLA"), op: Cpu6502::pla, addr_mode: Cpu6502::imp, cycles: 4 }, Instruction { name: String::from("ADC"), op: Cpu6502::adc, addr_mode: Cpu6502::imm, cycles: 2 }, Instruction { name: String::from("ROR"), op: Cpu6502::ror, addr_mode: Cpu6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 2 }, Instruction { name: String::from("JMP"), op: Cpu6502::jmp, addr_mode: Cpu6502::ind, cycles: 5 }, Instruction { name: String::from("ADC"), op: Cpu6502::adc, addr_mode: Cpu6502::abs, cycles: 4 }, Instruction { name: String::from("ROR"), op: Cpu6502::ror, addr_mode: Cpu6502::abs, cycles: 6 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 6 },
+                Instruction { name: String::from("BVS"), op: Cpu6502::bvs, addr_mode: Cpu6502::rel, cycles: 2 }, Instruction { name: String::from("ADC"), op: Cpu6502::adc, addr_mode: Cpu6502::izy, cycles: 5 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 8 }, Instruction { name: String::from("???"), op: Cpu6502::nop, addr_mode: Cpu6502::imp, cycles: 4 }, Instruction { name: String::from("ADC"), op: Cpu6502::adc, addr_mode: Cpu6502::zpx, cycles: 4 }, Instruction { name: String::from("ROR"), op: Cpu6502::ror, addr_mode: Cpu6502::zpx, cycles: 6 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 6 }, Instruction { name: String::from("SEI"), op: Cpu6502::sei, addr_mode: Cpu6502::imp, cycles: 2 }, Instruction { name: String::from("ADC"), op: Cpu6502::adc, addr_mode: Cpu6502::aby, cycles: 4 }, Instruction { name: String::from("???"), op: Cpu6502::nop, addr_mode: Cpu6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 7 }, Instruction { name: String::from("???"), op: Cpu6502::nop, addr_mode: Cpu6502::imp, cycles: 4 }, Instruction { name: String::from("ADC"), op: Cpu6502::adc, addr_mode: Cpu6502::abx, cycles: 4 }, Instruction { name: String::from("ROR"), op: Cpu6502::ror, addr_mode: Cpu6502::abx, cycles: 7 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 7 },
+                Instruction { name: String::from("???"), op: Cpu6502::nop, addr_mode: Cpu6502::imp, cycles: 2 }, Instruction { name: String::from("STA"), op: Cpu6502::sta, addr_mode: Cpu6502::izx, cycles: 6 }, Instruction { name: String::from("???"), op: Cpu6502::nop, addr_mode: Cpu6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 6 }, Instruction { name: String::from("STY"), op: Cpu6502::sty, addr_mode: Cpu6502::zp0, cycles: 3 }, Instruction { name: String::from("STA"), op: Cpu6502::sta, addr_mode: Cpu6502::zp0, cycles: 3 }, Instruction { name: String::from("STX"), op: Cpu6502::stx, addr_mode: Cpu6502::zp0, cycles: 3 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 3 }, Instruction { name: String::from("DEY"), op: Cpu6502::dey, addr_mode: Cpu6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: Cpu6502::nop, addr_mode: Cpu6502::imp, cycles: 2 }, Instruction { name: String::from("TXA"), op: Cpu6502::txa, addr_mode: Cpu6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 2 }, Instruction { name: String::from("STY"), op: Cpu6502::sty, addr_mode: Cpu6502::abs, cycles: 4 }, Instruction { name: String::from("STA"), op: Cpu6502::sta, addr_mode: Cpu6502::abs, cycles: 4 }, Instruction { name: String::from("STX"), op: Cpu6502::stx, addr_mode: Cpu6502::abs, cycles: 4 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 4 },
+                Instruction { name: String::from("BCC"), op: Cpu6502::bcc, addr_mode: Cpu6502::rel, cycles: 2 }, Instruction { name: String::from("STA"), op: Cpu6502::sta, addr_mode: Cpu6502::izy, cycles: 6 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 6 }, Instruction { name: String::from("STY"), op: Cpu6502::sty, addr_mode: Cpu6502::zpx, cycles: 4 }, Instruction { name: String::from("STA"), op: Cpu6502::sta, addr_mode: Cpu6502::zpx, cycles: 4 }, Instruction { name: String::from("STX"), op: Cpu6502::stx, addr_mode: Cpu6502::zpy, cycles: 4 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 4 }, Instruction { name: String::from("TYA"), op: Cpu6502::tya, addr_mode: Cpu6502::imp, cycles: 2 }, Instruction { name: String::from("STA"), op: Cpu6502::sta, addr_mode: Cpu6502::aby, cycles: 5 }, Instruction { name: String::from("TXS"), op: Cpu6502::txs, addr_mode: Cpu6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 5 }, Instruction { name: String::from("???"), op: Cpu6502::nop, addr_mode: Cpu6502::imp, cycles: 5 }, Instruction { name: String::from("STA"), op: Cpu6502::sta, addr_mode: Cpu6502::abx, cycles: 5 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 5 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 5 },
+                Instruction { name: String::from("LDY"), op: Cpu6502::ldy, addr_mode: Cpu6502::imm, cycles: 2 }, Instruction { name: String::from("LDA"), op: Cpu6502::lda, addr_mode: Cpu6502::izx, cycles: 6 }, Instruction { name: String::from("LDX"), op: Cpu6502::ldx, addr_mode: Cpu6502::imm, cycles: 2 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 6 }, Instruction { name: String::from("LDY"), op: Cpu6502::ldy, addr_mode: Cpu6502::zp0, cycles: 3 }, Instruction { name: String::from("LDA"), op: Cpu6502::lda, addr_mode: Cpu6502::zp0, cycles: 3 }, Instruction { name: String::from("LDX"), op: Cpu6502::ldx, addr_mode: Cpu6502::zp0, cycles: 3 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 3 }, Instruction { name: String::from("TAY"), op: Cpu6502::tay, addr_mode: Cpu6502::imp, cycles: 2 }, Instruction { name: String::from("LDA"), op: Cpu6502::lda, addr_mode: Cpu6502::imm, cycles: 2 }, Instruction { name: String::from("TAX"), op: Cpu6502::tax, addr_mode: Cpu6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 2 }, Instruction { name: String::from("LDY"), op: Cpu6502::ldy, addr_mode: Cpu6502::abs, cycles: 4 }, Instruction { name: String::from("LDA"), op: Cpu6502::lda, addr_mode: Cpu6502::abs, cycles: 4 }, Instruction { name: String::from("LDX"), op: Cpu6502::ldx, addr_mode: Cpu6502::abs, cycles: 4 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 4 },
+                Instruction { name: String::from("BCS"), op: Cpu6502::bcs, addr_mode: Cpu6502::rel, cycles: 2 }, Instruction { name: String::from("LDA"), op: Cpu6502::lda, addr_mode: Cpu6502::izy, cycles: 5 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 5 }, Instruction { name: String::from("LDY"), op: Cpu6502::ldy, addr_mode: Cpu6502::zpx, cycles: 4 }, Instruction { name: String::from("LDA"), op: Cpu6502::lda, addr_mode: Cpu6502::zpx, cycles: 4 }, Instruction { name: String::from("LDX"), op: Cpu6502::ldx, addr_mode: Cpu6502::zpy, cycles: 4 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 4 }, Instruction { name: String::from("CLV"), op: Cpu6502::clv, addr_mode: Cpu6502::imp, cycles: 2 }, Instruction { name: String::from("LDA"), op: Cpu6502::lda, addr_mode: Cpu6502::aby, cycles: 4 }, Instruction { name: String::from("TSX"), op: Cpu6502::tsx, addr_mode: Cpu6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 4 }, Instruction { name: String::from("LDY"), op: Cpu6502::ldy, addr_mode: Cpu6502::abx, cycles: 4 }, Instruction { name: String::from("LDA"), op: Cpu6502::lda, addr_mode: Cpu6502::abx, cycles: 4 }, Instruction { name: String::from("LDX"), op: Cpu6502::ldx, addr_mode: Cpu6502::aby, cycles: 4 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 4 },
+                Instruction { name: String::from("CPY"), op: Cpu6502::cpy, addr_mode: Cpu6502::imm, cycles: 2 }, Instruction { name: String::from("CMP"), op: Cpu6502::cmp, addr_mode: Cpu6502::izx, cycles: 6 }, Instruction { name: String::from("???"), op: Cpu6502::nop, addr_mode: Cpu6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 8 }, Instruction { name: String::from("CPY"), op: Cpu6502::cpy, addr_mode: Cpu6502::zp0, cycles: 3 }, Instruction { name: String::from("CMP"), op: Cpu6502::cmp, addr_mode: Cpu6502::zp0, cycles: 3 }, Instruction { name: String::from("DEC"), op: Cpu6502::dec, addr_mode: Cpu6502::zp0, cycles: 5 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 5 }, Instruction { name: String::from("INY"), op: Cpu6502::iny, addr_mode: Cpu6502::imp, cycles: 2 }, Instruction { name: String::from("CMP"), op: Cpu6502::cmp, addr_mode: Cpu6502::imm, cycles: 2 }, Instruction { name: String::from("DEX"), op: Cpu6502::dex, addr_mode: Cpu6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 2 }, Instruction { name: String::from("CPY"), op: Cpu6502::cpy, addr_mode: Cpu6502::abs, cycles: 4 }, Instruction { name: String::from("CMP"), op: Cpu6502::cmp, addr_mode: Cpu6502::abs, cycles: 4 }, Instruction { name: String::from("DEC"), op: Cpu6502::dec, addr_mode: Cpu6502::abs, cycles: 6 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 6 },
+                Instruction { name: String::from("BNE"), op: Cpu6502::bne, addr_mode: Cpu6502::rel, cycles: 2 }, Instruction { name: String::from("CMP"), op: Cpu6502::cmp, addr_mode: Cpu6502::izy, cycles: 5 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 8 }, Instruction { name: String::from("???"), op: Cpu6502::nop, addr_mode: Cpu6502::imp, cycles: 4 }, Instruction { name: String::from("CMP"), op: Cpu6502::cmp, addr_mode: Cpu6502::zpx, cycles: 4 }, Instruction { name: String::from("DEC"), op: Cpu6502::dec, addr_mode: Cpu6502::zpx, cycles: 6 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 6 }, Instruction { name: String::from("CLD"), op: Cpu6502::cld, addr_mode: Cpu6502::imp, cycles: 2 }, Instruction { name: String::from("CMP"), op: Cpu6502::cmp, addr_mode: Cpu6502::aby, cycles: 4 }, Instruction { name: String::from("NOP"), op: Cpu6502::nop, addr_mode: Cpu6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 7 }, Instruction { name: String::from("???"), op: Cpu6502::nop, addr_mode: Cpu6502::imp, cycles: 4 }, Instruction { name: String::from("CMP"), op: Cpu6502::cmp, addr_mode: Cpu6502::abx, cycles: 4 }, Instruction { name: String::from("DEC"), op: Cpu6502::dec, addr_mode: Cpu6502::abx, cycles: 7 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 7 },
+                Instruction { name: String::from("CPX"), op: Cpu6502::cpx, addr_mode: Cpu6502::imm, cycles: 2 }, Instruction { name: String::from("SBC"), op: Cpu6502::sbc, addr_mode: Cpu6502::izx, cycles: 6 }, Instruction { name: String::from("???"), op: Cpu6502::nop, addr_mode: Cpu6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 8 }, Instruction { name: String::from("CPX"), op: Cpu6502::cpx, addr_mode: Cpu6502::zp0, cycles: 3 }, Instruction { name: String::from("SBC"), op: Cpu6502::sbc, addr_mode: Cpu6502::zp0, cycles: 3 }, Instruction { name: String::from("INC"), op: Cpu6502::inc, addr_mode: Cpu6502::zp0, cycles: 5 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 5 }, Instruction { name: String::from("INX"), op: Cpu6502::inx, addr_mode: Cpu6502::imp, cycles: 2 }, Instruction { name: String::from("SBC"), op: Cpu6502::sbc, addr_mode: Cpu6502::imm, cycles: 2 }, Instruction { name: String::from("NOP"), op: Cpu6502::nop, addr_mode: Cpu6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: Cpu6502::sbc, addr_mode: Cpu6502::imp, cycles: 2 }, Instruction { name: String::from("CPX"), op: Cpu6502::cpx, addr_mode: Cpu6502::abs, cycles: 4 }, Instruction { name: String::from("SBC"), op: Cpu6502::sbc, addr_mode: Cpu6502::abs, cycles: 4 }, Instruction { name: String::from("INC"), op: Cpu6502::inc, addr_mode: Cpu6502::abs, cycles: 6 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 6 },
+                Instruction { name: String::from("BEQ"), op: Cpu6502::beq, addr_mode: Cpu6502::rel, cycles: 2 }, Instruction { name: String::from("SBC"), op: Cpu6502::sbc, addr_mode: Cpu6502::izy, cycles: 5 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 8 }, Instruction { name: String::from("???"), op: Cpu6502::nop, addr_mode: Cpu6502::imp, cycles: 4 }, Instruction { name: String::from("SBC"), op: Cpu6502::sbc, addr_mode: Cpu6502::zpx, cycles: 4 }, Instruction { name: String::from("INC"), op: Cpu6502::inc, addr_mode: Cpu6502::zpx, cycles: 6 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 6 }, Instruction { name: String::from("SED"), op: Cpu6502::sed, addr_mode: Cpu6502::imp, cycles: 2 }, Instruction { name: String::from("SBC"), op: Cpu6502::sbc, addr_mode: Cpu6502::aby, cycles: 4 }, Instruction { name: String::from("NOP"), op: Cpu6502::nop, addr_mode: Cpu6502::imp, cycles: 2 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 7 }, Instruction { name: String::from("???"), op: Cpu6502::nop, addr_mode: Cpu6502::imp, cycles: 4 }, Instruction { name: String::from("SBC"), op: Cpu6502::sbc, addr_mode: Cpu6502::abx, cycles: 4 }, Instruction { name: String::from("INC"), op: Cpu6502::inc, addr_mode: Cpu6502::abx, cycles: 7 }, Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 7 },
             ]
         };
 
@@ -88,6 +91,11 @@ impl CPU6502
     pub fn set_bus(&mut self, bus: Option<Rc<RefCell<dyn ReadWrite>>>)
     {
         self.bus = bus;
+    }
+
+    pub fn connect_cartridge(&mut self, cartridge: Rc<RefCell<Cart>>)
+    {
+        self.cartridge = Some(cartridge);
     }
 
     pub fn get_flag(&self, f: Flags6502) -> u8
@@ -150,7 +158,7 @@ impl CPU6502
     pub fn zp0(&mut self) -> u8
     {
         // Address in the zero page (plus a byte offset that is read)
-        self.addr_abs = self.read(self.pc) as u16;
+        self.addr_abs = self.cpu_read(self.pc) as u16;
         self.pc += 1;
         self.addr_abs &= 0x00FF;
         return 0;
@@ -160,7 +168,7 @@ impl CPU6502
     {
         // Address in the zero page (plus a byte offset that is read and incremented by X register)
         // This is used for iterating through ranges in zero page
-        self.addr_abs = (self.read(self.pc) + self.x) as u16;
+        self.addr_abs = (self.cpu_read(self.pc) + self.x) as u16;
         self.pc += 1;
         self.addr_abs &= 0x00FF;
         return 0;
@@ -169,7 +177,7 @@ impl CPU6502
     pub fn zpy(&mut self) -> u8
     {
         // Address in the zero page (plus a byte offset that is read and incremented by Y register)
-        self.addr_abs = (self.read(self.pc) + self.y) as u16;
+        self.addr_abs = (self.cpu_read(self.pc) + self.y) as u16;
         self.pc += 1;
         self.addr_abs &= 0x00FF;
         return 0;
@@ -177,7 +185,7 @@ impl CPU6502
 
     pub fn rel(&mut self) -> u8
     {
-        self.addr_rel = self.read(self.pc) as u16;
+        self.addr_rel = self.cpu_read(self.pc) as u16;
         self.pc += 1;
 
         // If we have a negative offset, we need to set upper bits to 1
@@ -192,9 +200,9 @@ impl CPU6502
     pub fn abs(&mut self) -> u8
     {
         // Absolute addressing (full u16 address)
-        let lo: u16 = self.read(self.pc) as u16;
+        let lo: u16 = self.cpu_read(self.pc) as u16;
         self.pc += 1;
-        let hi: u16 = self.read(self.pc) as u16;
+        let hi: u16 = self.cpu_read(self.pc) as u16;
         self.pc += 1;
 
         self.addr_abs = (hi << 8) | lo;
@@ -204,9 +212,9 @@ impl CPU6502
     pub fn abx(&mut self) -> u8
     {
         // Absolute addressing (full u16 address) with X offset
-        let lo: u16 = self.read(self.pc) as u16;
+        let lo: u16 = self.cpu_read(self.pc) as u16;
         self.pc += 1;
-        let hi: u16 = self.read(self.pc) as u16;
+        let hi: u16 = self.cpu_read(self.pc) as u16;
         self.pc += 1;
     
         self.addr_abs = (hi << 8) | lo;
@@ -226,9 +234,9 @@ impl CPU6502
     pub fn aby(&mut self) -> u8
     {
         // Absolute addressing (full u16 address) with Y offset
-        let lo: u16 = self.read(self.pc) as u16;
+        let lo: u16 = self.cpu_read(self.pc) as u16;
         self.pc += 1;
-        let hi: u16 = self.read(self.pc) as u16;
+        let hi: u16 = self.cpu_read(self.pc) as u16;
         self.pc += 1;
 
         self.addr_abs = (hi << 8) | lo;
@@ -247,20 +255,20 @@ impl CPU6502
 
     pub fn ind(&mut self) -> u8
     {
-        let ptr_lo: u16 = self.read(self.pc) as u16;
+        let ptr_lo: u16 = self.cpu_read(self.pc) as u16;
         self.pc += 1;
-        let ptr_hi: u16 = self.read(self.pc) as u16;
+        let ptr_hi: u16 = self.cpu_read(self.pc) as u16;
         self.pc += 1;
 
         let ptr: u16 = (ptr_hi << 8) | ptr_lo;
 
         if ptr_lo == 0x00FF
         {
-            self.addr_abs = (((self.read(ptr & 0xFF00 as u16) as u16) << 8) | self.read(ptr) as u16) as u16;
+            self.addr_abs = (((self.cpu_read(ptr & 0xFF00 as u16) as u16) << 8) | self.cpu_read(ptr) as u16) as u16;
         }
         else
         {
-            self.addr_abs = (((self.read(ptr + 1) as u16) << 8) | self.read(ptr + 0) as u16) as u16;
+            self.addr_abs = (((self.cpu_read(ptr + 1) as u16) << 8) | self.cpu_read(ptr + 0) as u16) as u16;
         }
 
         return 0;
@@ -269,11 +277,11 @@ impl CPU6502
     // The read 8-bit address is offset by X and used to read the 16-bit absolute address
     pub fn izx(&mut self) -> u8
     {
-        let t : u16 = self.read(self.pc) as u16;
+        let t : u16 = self.cpu_read(self.pc) as u16;
 	    self.pc += 1;
 
-        let lo: u16 = self.read((t + self.x as u16) & 0x00FF) as u16;
-        let hi: u16 = self.read((t + self.x as u16 + 1) & 0x00FF) as u16;
+        let lo: u16 = self.cpu_read((t + self.x as u16) & 0x00FF) as u16;
+        let hi: u16 = self.cpu_read((t + self.x as u16 + 1) & 0x00FF) as u16;
 
         self.addr_abs = (hi << 8) | lo;
 
@@ -284,11 +292,11 @@ impl CPU6502
     // If the offset changes a page, we need 1 additional clock cycle
     pub fn izy(&mut self) -> u8
     {
-        let t : u16 = self.read(self.pc) as u16;
+        let t : u16 = self.cpu_read(self.pc) as u16;
         self.pc += 1;
 
-        let lo: u16 = self.read(t & 0x00FF) as u16;
-        let hi: u16 = self.read((t + 1) & 0x00FF) as u16;
+        let lo: u16 = self.cpu_read(t & 0x00FF) as u16;
+        let hi: u16 = self.cpu_read((t + 1) & 0x00FF) as u16;
 
         self.addr_abs = (hi << 8) | lo;
         self.addr_abs += self.y as u16;
@@ -468,18 +476,18 @@ impl CPU6502
 
     fn write_pc_to_stack(&mut self)
     {
-        self.write(CPU6502::STACK_START_ADDRESS + self.stkp as u16, ((self.pc >> 8) & 0x00FF) as u8);
+        self.cpu_write(Cpu6502::STACK_START_ADDRESS + self.stkp as u16, ((self.pc >> 8) & 0x00FF) as u8);
         self.stkp -= 1;
-        self.write(CPU6502::STACK_START_ADDRESS + self.stkp as u16, (self.pc & 0x00FF) as u8);
+        self.cpu_write(Cpu6502::STACK_START_ADDRESS + self.stkp as u16, (self.pc & 0x00FF) as u8);
         self.stkp -= 1;
     }
 
     fn read_pc_from_stack(&mut self)
     {
         self.stkp += 1;
-        self.pc = self.read(CPU6502::STACK_START_ADDRESS + self.stkp as u16) as u16;
+        self.pc = self.cpu_read(Cpu6502::STACK_START_ADDRESS + self.stkp as u16) as u16;
         self.stkp += 1;
-        self.pc |= (self.read(CPU6502::STACK_START_ADDRESS + self.stkp as u16) as u16) << 8;
+        self.pc |= (self.cpu_read(Cpu6502::STACK_START_ADDRESS + self.stkp as u16) as u16) << 8;
     }
 
     // Instruction: Break
@@ -493,14 +501,14 @@ impl CPU6502
 
         // TODO: Not clear when exactly the B-flag should be set based on the documentation, needs investigation
         self.set_flag(Flags6502::B, true);
-        self.write(CPU6502::STACK_START_ADDRESS + self.stkp as u16, self.status);
+        self.cpu_write(Cpu6502::STACK_START_ADDRESS + self.stkp as u16, self.status);
         self.stkp -= 1;
         self.set_flag(Flags6502::B, false);
 
         // TODO: Not clear if we should vary behavior if an NMI happens while BRK is ongoing
         // Go to the interrupt vector
-        self.pc = self.read(CPU6502::INTERRUPT_VECTOR[1]) as u16 |
-                    ((self.read(CPU6502::INTERRUPT_VECTOR[0]) as u16) << 8);
+        self.pc = self.cpu_read(Cpu6502::INTERRUPT_VECTOR[1]) as u16 |
+                    ((self.cpu_read(Cpu6502::INTERRUPT_VECTOR[0]) as u16) << 8);
 
         return 0;
     }
@@ -559,7 +567,7 @@ impl CPU6502
         return 0;
     }
 
-    fn cmp_helper<F>(&mut self, closure: F) where F: Fn(&CPU6502) -> u8
+    fn cmp_helper<F>(&mut self, closure: F) where F: Fn(&Cpu6502) -> u8
     {
         self.fetch();
         let temp: u16 = closure(self) as u16 - self.fetched_data as u16;
@@ -590,7 +598,7 @@ impl CPU6502
     {
         self.fetch();
         let temp: u16 = self.fetched_data as u16 - 1;
-        self.write(self.addr_abs, (temp & 0x00FF) as u8);
+        self.cpu_write(self.addr_abs, (temp & 0x00FF) as u8);
         self.set_flag(Flags6502::Z, (temp & 0x00FF) == 0x0000);
         self.set_flag(Flags6502::N, (temp & 0x0080) == 0x0080);
 
@@ -634,7 +642,7 @@ impl CPU6502
     {
         self.fetch();
         let temp: u16 = self.fetched_data as u16 + 1;
-        self.write(self.addr_abs, (temp & 0x00FF) as u8);
+        self.cpu_write(self.addr_abs, (temp & 0x00FF) as u8);
         self.set_flag(Flags6502::Z, (temp & 0x00FF) == 0x0000);
         self.set_flag(Flags6502::N, (temp & 0x0080) == 0x0080);
         return 0;
@@ -679,13 +687,13 @@ impl CPU6502
         return 0;
     }
 
-    fn load_helper_write<F>(&mut self, write_closure: F) where F: Fn(&mut CPU6502)
+    fn load_helper_write<F>(&mut self, write_closure: F) where F: Fn(&mut Cpu6502)
     {
         self.fetch();
         write_closure(self);
     }
 
-    fn load_helper_update_flags<F>(&mut self, read_closure: F) where F: Fn(&CPU6502) -> u8
+    fn load_helper_update_flags<F>(&mut self, read_closure: F) where F: Fn(&Cpu6502) -> u8
     {
         self.set_flag(Flags6502::Z, read_closure(self) == 0x00);
         self.set_flag(Flags6502::N, (read_closure(self) & 0x80) == 0x80);
@@ -721,13 +729,13 @@ impl CPU6502
         self.set_flag(Flags6502::Z, (temp & 0x00FF) == 0x0000); // Zero
         self.set_flag(Flags6502::N, temp & 0x0080 == 0x0080); // Negative
 
-        if self.ins[self.opcode as usize].addr_mode == CPU6502::imp
+        if self.ins[self.opcode as usize].addr_mode == Cpu6502::imp
         {
             self.a = (temp & 0x00FF) as u8;
         }
         else
         {
-            self.write(self.addr_abs, (temp & 0x00FF) as u8);
+            self.cpu_write(self.addr_abs, (temp & 0x00FF) as u8);
         }
 
         return 0;
@@ -765,7 +773,7 @@ impl CPU6502
     // Function: Write A to stkp
     pub fn pha(&mut self) -> u8 
     {
-        self.write(CPU6502::STACK_START_ADDRESS + self.stkp as u16, self.a);
+        self.cpu_write(Cpu6502::STACK_START_ADDRESS + self.stkp as u16, self.a);
         self.stkp -= 1;
         return 0;
     }
@@ -775,7 +783,7 @@ impl CPU6502
     pub fn php(&mut self) -> u8 
     {
         // Note that Break and Unused flag are both set to 1 when writing
-        self.write(CPU6502::STACK_START_ADDRESS + self.stkp as u16, (self.status) | Flags6502::B as u8 | Flags6502::U as u8);
+        self.cpu_write(Cpu6502::STACK_START_ADDRESS + self.stkp as u16, (self.status) | Flags6502::B as u8 | Flags6502::U as u8);
         self.set_flag(Flags6502::B, false);
         self.set_flag(Flags6502::U, false);
         self.stkp -= 1;
@@ -787,7 +795,7 @@ impl CPU6502
     pub fn pla(&mut self) -> u8 
     {
         self.stkp += 1;
-        self.a = self.read(CPU6502::STACK_START_ADDRESS + self.stkp as u16);
+        self.a = self.cpu_read(Cpu6502::STACK_START_ADDRESS + self.stkp as u16);
         self.set_flag(Flags6502::Z, self.a == 0x00); // Zero
         self.set_flag(Flags6502::N, self.a & 0x80 == 0x80); // Negative
         return 0;
@@ -798,7 +806,7 @@ impl CPU6502
     pub fn plp(&mut self) -> u8 
     {
         self.stkp += 1;
-        self.status = self.read(CPU6502::STACK_START_ADDRESS + self.stkp as u16);
+        self.status = self.cpu_read(Cpu6502::STACK_START_ADDRESS + self.stkp as u16);
         self.set_flag(Flags6502::U, true);
         return 0;
     }
@@ -814,13 +822,13 @@ impl CPU6502
         self.set_flag(Flags6502::N, temp & 0x0080 == 0x0080); // Negative
 
         // TODO: Consolidate this pattern
-        if self.ins[self.opcode as usize].addr_mode == CPU6502::imp
+        if self.ins[self.opcode as usize].addr_mode == Cpu6502::imp
         {
             self.a = (temp & 0x00FF) as u8;
         }
         else
         {
-            self.write(self.addr_abs, (temp & 0x00FF) as u8);
+            self.cpu_write(self.addr_abs, (temp & 0x00FF) as u8);
         }
 
         return 0;
@@ -837,13 +845,13 @@ impl CPU6502
         self.set_flag(Flags6502::N, (temp & 0x0080) == 0x0080); // Negative
 
         // TODO: Consolidate this pattern
-        if self.ins[self.opcode as usize].addr_mode == CPU6502::imp
+        if self.ins[self.opcode as usize].addr_mode == Cpu6502::imp
         {
             self.a = (temp & 0x00FF) as u8;
         }
         else
         {
-            self.write(self.addr_abs, (temp & 0x00FF) as u8);
+            self.cpu_write(self.addr_abs, (temp & 0x00FF) as u8);
         }
 
         return 0;
@@ -854,7 +862,7 @@ impl CPU6502
     pub fn rti(&mut self) -> u8 
     {
         self.stkp += 1;
-        self.status = self.read(CPU6502::STACK_START_ADDRESS + self.stkp as u16);
+        self.status = self.cpu_read(Cpu6502::STACK_START_ADDRESS + self.stkp as u16);
 
         // Zero out break and unused values, TODO: Why?
         self.status &= !(Flags6502::B as u8);
@@ -953,7 +961,7 @@ impl CPU6502
     // Function: M = A
     pub fn sta(&mut self) -> u8 
     {
-        self.write(self.addr_abs, self.a);
+        self.cpu_write(self.addr_abs, self.a);
         return 0;
     }
 
@@ -961,7 +969,7 @@ impl CPU6502
     // Function: M = X
     pub fn stx(&mut self) -> u8 
     {
-        self.write(self.addr_abs, self.x);
+        self.cpu_write(self.addr_abs, self.x);
         return 0;
     }
 
@@ -969,7 +977,7 @@ impl CPU6502
     // Function: M = Y
     pub fn sty(&mut self) -> u8 
     {
-        self.write(self.addr_abs, self.y);
+        self.cpu_write(self.addr_abs, self.y);
         return 0;
     }
 
@@ -1042,7 +1050,7 @@ impl CPU6502
     {
         if self.cycles == 0
         {
-            self.opcode = self.read(self.pc);
+            self.opcode = self.cpu_read(self.pc);
 
             // TODO: Why?
             self.set_flag(Flags6502::U, true);
@@ -1084,92 +1092,92 @@ impl CPU6502
             let mut instruction: String = format!("${:04x}: ", addr);
             let opcode = match &self.bus
                 {
-                    Some(x) => (*x.borrow()).read(addr as u16),
+                    Some(x) => (*x.borrow()).cpu_read(addr as u16),
                     None => panic!("Error, missing bus inside CPU")
                 };
 
             addr += 1;
             instruction += &self.ins[opcode as usize].name;
 
-            if self.ins[opcode as usize].addr_mode == CPU6502::imp
+            if self.ins[opcode as usize].addr_mode == Cpu6502::imp
             {
                 instruction += &String::from(" {IMP}");
             }
-            else if self.ins[opcode as usize].addr_mode == CPU6502::imm
+            else if self.ins[opcode as usize].addr_mode == Cpu6502::imm
             {
-                value = self.read(addr as u16);
+                value = self.cpu_read(addr as u16);
                 addr += 1;
                 instruction += &String::from(format!(" #${:02x} {{IMM}}", value));
             }
-            else if self.ins[opcode as usize].addr_mode == CPU6502::zp0
+            else if self.ins[opcode as usize].addr_mode == Cpu6502::zp0
             {
-                lo = self.read(addr as u16);
+                lo = self.cpu_read(addr as u16);
                 addr += 1;
                 instruction += &String::from(format!(" ${:02x} {{ZP0}}", lo));
             }
-            else if self.ins[opcode as usize].addr_mode == CPU6502::zpx
+            else if self.ins[opcode as usize].addr_mode == Cpu6502::zpx
             {
-                lo = self.read(addr as u16);
+                lo = self.cpu_read(addr as u16);
                 addr += 1;
                 instruction += &String::from(format!(" ${:02x}, X {{ZPX}}", lo));
             }
-            else if self.ins[opcode as usize].addr_mode == CPU6502::zpy
+            else if self.ins[opcode as usize].addr_mode == Cpu6502::zpy
             {
-                lo = self.read(addr as u16);
+                lo = self.cpu_read(addr as u16);
                 addr += 1;
                 instruction += &String::from(format!(" ${:02x}, Y {{ZPY}}", lo));
             }
-            else if self.ins[opcode as usize].addr_mode == CPU6502::izx
+            else if self.ins[opcode as usize].addr_mode == Cpu6502::izx
             {
-                lo = self.read(addr as u16);
+                lo = self.cpu_read(addr as u16);
                 addr += 1;
                 instruction += &String::from(format!(" (${:02x}), X {{IZX}}", lo));
             }
-            else if self.ins[opcode as usize].addr_mode == CPU6502::izy
+            else if self.ins[opcode as usize].addr_mode == Cpu6502::izy
             {
-                lo = self.read(addr as u16);
+                lo = self.cpu_read(addr as u16);
                 addr += 1;
                 instruction += &String::from(format!(" (${:02x}), Y {{IZY}}", lo));
             }
-            else if self.ins[opcode as usize].addr_mode == CPU6502::abs
+            else if self.ins[opcode as usize].addr_mode == Cpu6502::abs
             {
-                lo = self.read(addr as u16);
+                lo = self.cpu_read(addr as u16);
                 addr += 1;
-                hi = self.read(addr as u16);
+                hi = self.cpu_read(addr as u16);
                 addr += 1;
                 let cur_addr = ((hi as u16) << 8) | lo as u16;
                 instruction += &String::from(format!(" ${:04x} {{ABS}}", cur_addr));
             }
-            else if self.ins[opcode as usize].addr_mode == CPU6502::abx
+            else if self.ins[opcode as usize].addr_mode == Cpu6502::abx
             {
-                lo = self.read(addr as u16);
+                lo = self.cpu_read(addr as u16);
                 addr += 1;
-                hi = self.read(addr as u16);
+                hi = self.cpu_read(addr as u16);
                 addr += 1;
                 let cur_addr = ((hi as u16) << 8) | lo as u16;
                 instruction += &String::from(format!(" ${:04x}, X {{ABX}}", cur_addr));
             }
-            else if self.ins[opcode as usize].addr_mode == CPU6502::aby
+            else if self.ins[opcode as usize].addr_mode == Cpu6502::aby
             {
-                lo = self.read(addr as u16);
+                lo = self.cpu_read(addr as u16);
                 addr += 1;
-                hi = self.read(addr as u16);
+                hi = self.cpu_read(addr as u16);
                 addr += 1;
                 let cur_addr = ((hi as u16) << 8) | lo as u16;
                 instruction += &String::from(format!(" ${:04x}, Y {{ABY}}", cur_addr));
             }
-            else if self.ins[opcode as usize].addr_mode == CPU6502::ind
+            else if self.ins[opcode as usize].addr_mode == Cpu6502::ind
             {
-                lo = self.read(addr as u16);
+                lo = self.cpu_read(addr as u16);
                 addr += 1;
-                hi = self.read(addr as u16);
+                hi = self.cpu_read(addr as u16);
                 addr += 1;
                 let cur_addr = ((hi as u16) << 8) | lo as u16;
                 instruction += &String::from(format!(" (${:04x}) {{IND}}", cur_addr));
             }
-            else if self.ins[opcode as usize].addr_mode == CPU6502::rel
+            else if self.ins[opcode as usize].addr_mode == Cpu6502::rel
             {
-                value = self.read(addr as u16);
+                value = self.cpu_read(addr as u16);
                 addr += 1;
                 instruction += &String::from(format!(" ${:02x} [${:04x}] {{REL}}", value, addr as u16 + value as u16));
             }
@@ -1183,8 +1191,8 @@ impl CPU6502
     pub fn reset(&mut self)
     {
         self.addr_abs = 0xFFFC;
-        let lo: u8 = self.read(self.addr_abs + 0);
-        let hi: u8 = self.read(self.addr_abs + 1);
+        let lo: u8 = self.cpu_read(self.addr_abs + 0);
+        let hi: u8 = self.cpu_read(self.addr_abs + 1);
     
         self.pc = ((hi as u16) << 8) | lo as u16;
 
@@ -1211,13 +1219,13 @@ impl CPU6502
         self.set_flag(Flags6502::B, false);
         self.set_flag(Flags6502::U, true);
         self.set_flag(Flags6502::I, true);
-        self.write(CPU6502::STACK_START_ADDRESS + self.stkp as u16, self.status);
+        self.cpu_write(Cpu6502::STACK_START_ADDRESS + self.stkp as u16, self.status);
         self.stkp -= 1;
         
         // Read the new program counter location from a fixed address
         self.addr_abs = pc_read_addr;
-        let lo: u16 = self.read(self.addr_abs + 0) as u16;
-        let hi: u16 = self.read(self.addr_abs + 1) as u16;
+        let lo: u16 = self.cpu_read(self.addr_abs + 0) as u16;
+        let hi: u16 = self.cpu_read(self.addr_abs + 1) as u16;
 
         self.pc = (hi << 8) | lo;
 
@@ -1241,9 +1249,9 @@ impl CPU6502
     // Helpers
     pub fn fetch(&mut self) -> u8
     {
-        if self.ins[self.opcode as usize].addr_mode != CPU6502::imp
+        if self.ins[self.opcode as usize].addr_mode != Cpu6502::imp
         {
-            self.fetched_data = self.read(self.addr_abs);
+            self.fetched_data = self.cpu_read(self.addr_abs);
         }
 
         return self.fetched_data;
@@ -1251,23 +1259,33 @@ impl CPU6502
 
 }
 
-impl ReadWrite for CPU6502
+impl ReadWrite for Cpu6502
 {
-    fn write(&mut self, address: u16, data: u8)
+    fn cpu_write(&mut self, address: u16, data: u8)
     {
         match &self.bus
         {
-            Some(x) => (*x.borrow_mut()).write(address, data),
+            Some(x) => (*x.borrow_mut()).cpu_write(address, data),
             None => panic!("Error, missing bus inside CPU")
         }
     }
 
-    fn read(&self, address: u16) -> u8
+    fn cpu_read(&self, address: u16) -> u8
     {
         match &self.bus
         {
-            Some(x) => (*x.borrow_mut()).read(address),
+            Some(x) => (*x.borrow_mut()).cpu_read(address),
             None => panic!("Error, missing bus inside CPU")
         }
+    }
+
+    fn ppu_write(&mut self, address: u16, data: u8)
+    {
+        todo!()
+    }
+
+    fn ppu_read(&self, address: u16) -> u8
+    {
+        todo!()
     }
 }

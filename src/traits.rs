@@ -1,5 +1,7 @@
 pub trait ReadWrite
 {
-    fn write(&mut self, address: u16, data: u8);
-    fn read(&self, address: u16) -> u8;
+    fn cpu_write(&mut self, address: u16, data: u8);
+    fn cpu_read(&self, address: u16) -> u8;
+    fn ppu_write(&mut self, address: u16, data: u8);
+    fn ppu_read(&self, address: u16) -> u8;
 }
