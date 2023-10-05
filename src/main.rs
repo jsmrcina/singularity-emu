@@ -5,6 +5,7 @@ use traits::ReadWrite;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::collections::BTreeMap;
+use std::ops::Bound;
 
 use ggez::event;
 use ggez::graphics::{self};
@@ -98,35 +99,35 @@ impl<'a> MainState<'a>
         canvas.draw(&Text::new("Status"), Vec2::new(x, y));
         let mut num_offset: f32 = 0.0;
 
-        let color = if self.cpu.borrow().get_flag(Flags6502::N) == 1 { graphics::Color::GREEN } else { graphics::Color::RED };
+        let color = if self.cpu.borrow().get_flag(Flags6502::N) == Flags6502::N as u8 { graphics::Color::GREEN } else { graphics::Color::RED };
         canvas.draw(&Text::new("N"), graphics::DrawParam::new().color(color).dest(Vec2::new(x + 64.0 + (MainState::OFFSET_X * num_offset), y)));
         num_offset += 1.0;
 
-        let color = if self.cpu.borrow().get_flag(Flags6502::N) == 1 { graphics::Color::GREEN } else { graphics::Color::RED };
+        let color = if self.cpu.borrow().get_flag(Flags6502::V) == Flags6502::V as u8 { graphics::Color::GREEN } else { graphics::Color::RED };
         canvas.draw(&Text::new("V"), graphics::DrawParam::new().color(color).dest(Vec2::new(x + 64.0 + (MainState::OFFSET_X * num_offset), y)));
         num_offset += 1.0;
 
-        let color = if self.cpu.borrow().get_flag(Flags6502::N) == 1 { graphics::Color::GREEN } else { graphics::Color::RED };
+        let color = if self.cpu.borrow().get_flag(Flags6502::U) == Flags6502::U as u8 { graphics::Color::GREEN } else { graphics::Color::RED };
         canvas.draw(&Text::new("-"), graphics::DrawParam::new().color(color).dest(Vec2::new(x + 64.0 + (MainState::OFFSET_X * num_offset), y)));
         num_offset += 1.0;
 
-        let color = if self.cpu.borrow().get_flag(Flags6502::N) == 1 { graphics::Color::GREEN } else { graphics::Color::RED };
+        let color = if self.cpu.borrow().get_flag(Flags6502::B) == Flags6502::B as u8 { graphics::Color::GREEN } else { graphics::Color::RED };
         canvas.draw(&Text::new("B"), graphics::DrawParam::new().color(color).dest(Vec2::new(x + 64.0 + (MainState::OFFSET_X * num_offset), y)));
         num_offset += 1.0;
 
-        let color = if self.cpu.borrow().get_flag(Flags6502::N) == 1 { graphics::Color::GREEN } else { graphics::Color::RED };
+        let color = if self.cpu.borrow().get_flag(Flags6502::D) == Flags6502::D as u8 { graphics::Color::GREEN } else { graphics::Color::RED };
         canvas.draw(&Text::new("D"), graphics::DrawParam::new().color(color).dest(Vec2::new(x + 64.0 + (MainState::OFFSET_X * num_offset), y)));
         num_offset += 1.0;
 
-        let color = if self.cpu.borrow().get_flag(Flags6502::N) == 1 { graphics::Color::GREEN } else { graphics::Color::RED };
+        let color = if self.cpu.borrow().get_flag(Flags6502::I) == Flags6502::I as u8 { graphics::Color::GREEN } else { graphics::Color::RED };
         canvas.draw(&Text::new("I"), graphics::DrawParam::new().color(color).dest(Vec2::new(x + 64.0 + (MainState::OFFSET_X * num_offset), y)));
         num_offset += 1.0;
 
-        let color = if self.cpu.borrow().get_flag(Flags6502::N) == 1 { graphics::Color::GREEN } else { graphics::Color::RED };
+        let color = if self.cpu.borrow().get_flag(Flags6502::Z) == Flags6502::Z as u8 { graphics::Color::GREEN } else { graphics::Color::RED };
         canvas.draw(&Text::new("Z"), graphics::DrawParam::new().color(color).dest(Vec2::new(x + 64.0 + (MainState::OFFSET_X * num_offset), y)));
         num_offset += 1.0;
 
-        let color = if self.cpu.borrow().get_flag(Flags6502::N) == 1 { graphics::Color::GREEN } else { graphics::Color::RED };
+        let color = if self.cpu.borrow().get_flag(Flags6502::C) == Flags6502::C as u8 { graphics::Color::GREEN } else { graphics::Color::RED };
         canvas.draw(&Text::new("C"), graphics::DrawParam::new().color(color).dest(Vec2::new(x + 64.0 + (MainState::OFFSET_X * num_offset), y)));
         
         num_offset = 1.0;
@@ -154,18 +155,39 @@ impl<'a> MainState<'a>
 
     fn draw_code(&mut self, x: f32, y: f32, n_lines: i32, canvas: &mut ggez::graphics::Canvas)
     {
-        // TODO: Show both future and past
+        let mut before_keys: Vec<_> = self.map_asm.range((Bound::Unbounded, Bound::Excluded(self.cpu.borrow().get_pc())))
+                                                .rev()
+                                                .take((n_lines / 2) as usize)
+                                                .collect();
+
+        before_keys.reverse();
+
+        let after_keys: Vec<_> = self.map_asm.range((Bound::Excluded(self.cpu.borrow().get_pc()), Bound::Unbounded))
+            .take((n_lines / 2) as usize)
+            .collect();
+
         let mut num_offset: i32 = 0;
-        for (_, value) in self.map_asm.range(self.cpu.borrow().get_pc()..)
+        for (_, value) in before_keys
         {
             canvas.draw(&Text::new(value), Vec2::new(x, y + (MainState::OFFSET_Y * num_offset as f32)));
             num_offset += 1;
-            println!("{:04x}", num_offset);
+        }
 
-            if num_offset == n_lines
-            {
-                break;
-            }
+        let inst = self.map_asm.get(&self.cpu.borrow().get_pc());
+        match inst
+        {
+            
+            Some(s) => canvas.draw(&Text::new(s),
+                graphics::DrawParam::new().color(graphics::Color::CYAN).dest(Vec2::new(x, y + (MainState::OFFSET_Y * num_offset as f32)))),
+            None => ()
+        }
+
+        num_offset += 1;
+
+        for (_, value) in after_keys
+        {
+            canvas.draw(&Text::new(value), Vec2::new(x, y + (MainState::OFFSET_Y * num_offset as f32)));
+            num_offset += 1;
         }
     }
 
@@ -217,9 +239,13 @@ impl<'a> event::EventHandler<ggez::GameError> for MainState<'a>
         );
 
         MainState::<'a>::draw_ram(self, 2, 2, 0x0000, 16, 16, &mut canvas);
+        MainState::<'a>::draw_ram(self, 2, 250, 0x8000, 16, 16, &mut canvas);
         MainState::<'a>::draw_cpu(self, 475.0, 2.0, &mut canvas);
         MainState::<'a>::draw_code(self, 475.0, 100.0, 27, &mut canvas);
         
+        canvas.draw(&Text::new("SPACE = Step Instruction    R = RESET    I = IRQ    N = NMI"),
+            Vec2::new(10.0, 500.0));
+
         canvas.finish(ctx)?;
         Ok(())
     }
