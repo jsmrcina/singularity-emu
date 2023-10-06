@@ -20,25 +20,7 @@
                 }
             },
             "args": [],
-            "cwd": "${workspaceFolder}"
-        },
-        {
-            "type": "lldb",
-            "request": "launch",
-            "name": "Debug unit tests in executable 'singularity-emu'",
-            "cargo": {
-                "args": [
-                    "test",
-                    "--no-run",
-                    "--bin=singularity-emu",
-                    "--package=singularity-emu"
-                ],
-                "filter": {
-                    "name": "singularity-emu",
-                    "kind": "bin"
-                }
-            },
-            "args": [],
+            "env": { "RUST_BACKTRACE": "1" },
             "cwd": "${workspaceFolder}"
         }
     ]

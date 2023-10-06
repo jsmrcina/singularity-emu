@@ -1,4 +1,4 @@
-use crate::traits::ReadWrite;
+use crate::traits::{ReadWrite, Clockable};
 use crate::cartridge::cart::Cart;
 use std::rc::Rc;
 use std::cell::RefCell;
@@ -115,6 +115,21 @@ impl Cpu6502
         }
     }
 
+    pub fn cpu_read_u16_from_pc(&mut self) -> (bool, u16, u16, u16)
+    {
+        let lo: u16 = 0;
+        let hi: u16 = 0;
+        let data: u16;
+
+        self.cpu_read(self.pc, &mut (lo as u8));
+        self.pc += 1;
+        self.cpu_read(self.pc, &mut (hi as u8));
+        self.pc += 1;
+
+        data = (hi << 8) | lo;
+        return (true, hi, lo, data);
+    }
+
     pub fn get_pc(&self) -> u16
     {
         return self.pc;
@@ -158,7 +173,7 @@ impl Cpu6502
     pub fn zp0(&mut self) -> u8
     {
         // Address in the zero page (plus a byte offset that is read)
-        self.addr_abs = self.cpu_read(self.pc) as u16;
+        self.cpu_read(self.pc, &mut (self.addr_abs as u8));
         self.pc += 1;
         self.addr_abs &= 0x00FF;
         return 0;
@@ -168,7 +183,8 @@ impl Cpu6502
     {
         // Address in the zero page (plus a byte offset that is read and incremented by X register)
         // This is used for iterating through ranges in zero page
-        self.addr_abs = (self.cpu_read(self.pc) + self.x) as u16;
+        self.cpu_read(self.pc, &mut (self.addr_abs as u8));
+        self.addr_abs += self.x as u16;
         self.pc += 1;
         self.addr_abs &= 0x00FF;
         return 0;
@@ -177,7 +193,8 @@ impl Cpu6502
     pub fn zpy(&mut self) -> u8
     {
         // Address in the zero page (plus a byte offset that is read and incremented by Y register)
-        self.addr_abs = (self.cpu_read(self.pc) + self.y) as u16;
+        self.cpu_read(self.pc, &mut (self.addr_abs as u8));
+        self.addr_abs += self.y as u16;
         self.pc += 1;
         self.addr_abs &= 0x00FF;
         return 0;
@@ -185,7 +202,7 @@ impl Cpu6502
 
     pub fn rel(&mut self) -> u8
     {
-        self.addr_rel = self.cpu_read(self.pc) as u16;
+        self.cpu_read(self.pc, &mut (self.addr_rel as u8));
         self.pc += 1;
 
         // If we have a negative offset, we need to set upper bits to 1
@@ -200,28 +217,19 @@ impl Cpu6502
     pub fn abs(&mut self) -> u8
     {
         // Absolute addressing (full u16 address)
-        let lo: u16 = self.cpu_read(self.pc) as u16;
-        self.pc += 1;
-        let hi: u16 = self.cpu_read(self.pc) as u16;
-        self.pc += 1;
-
-        self.addr_abs = (hi << 8) | lo;
+        (_, _, _, self.addr_abs) = self.cpu_read_u16_from_pc();
         return 0; 
     }
 
     pub fn abx(&mut self) -> u8
     {
         // Absolute addressing (full u16 address) with X offset
-        let lo: u16 = self.cpu_read(self.pc) as u16;
-        self.pc += 1;
-        let hi: u16 = self.cpu_read(self.pc) as u16;
-        self.pc += 1;
-    
-        self.addr_abs = (hi << 8) | lo;
+        let lo: u16;
+        (_, lo, _, self.addr_abs) = self.cpu_read_u16_from_pc();
         self.addr_abs += self.x as u16;
     
         // If this crosses a page boundary, we need an additional clock cycle for this instruction
-        if (self.addr_abs & 0xFF00) != (hi << 8)
+        if (self.addr_abs & 0xFF00) != (lo << 8)
         {
             return 1;
         }
@@ -234,16 +242,12 @@ impl Cpu6502
     pub fn aby(&mut self) -> u8
     {
         // Absolute addressing (full u16 address) with Y offset
-        let lo: u16 = self.cpu_read(self.pc) as u16;
-        self.pc += 1;
-        let hi: u16 = self.cpu_read(self.pc) as u16;
-        self.pc += 1;
-
-        self.addr_abs = (hi << 8) | lo;
+        let lo: u16;
+        (_, lo, _, self.addr_abs) = self.cpu_read_u16_from_pc();
         self.addr_abs += self.y as u16;
 
         // If this crosses a page boundary, we need an additional clock cycle for this instruction
-        if (self.addr_abs & 0xFF00) != (hi << 8)
+        if (self.addr_abs & 0xFF00) != (lo << 8)
         {
             return 1;
         }
@@ -255,20 +259,25 @@ impl Cpu6502
 
     pub fn ind(&mut self) -> u8
     {
-        let ptr_lo: u16 = self.cpu_read(self.pc) as u16;
-        self.pc += 1;
-        let ptr_hi: u16 = self.cpu_read(self.pc) as u16;
-        self.pc += 1;
+        let ptr: u16;
+        let ptr_lo: u16;
+        (_, ptr_lo, _, ptr) = self.cpu_read_u16_from_pc();
 
-        let ptr: u16 = (ptr_hi << 8) | ptr_lo;
-
-        if ptr_lo == 0x00FF
+        let mut lo: u8 = 0;
+        let mut hi: u8 = 0;
+        if ptr_lo == 0x00FF // hi part
         {
-            self.addr_abs = (((self.cpu_read(ptr & 0xFF00 as u16) as u16) << 8) | self.cpu_read(ptr) as u16) as u16;
+            self.cpu_read(ptr, &mut lo);
+            self.cpu_read(ptr & 0xFF00, &mut hi);
+
+            self.addr_abs = lo as u16 | ((hi as u16) << 8);
         }
         else
         {
-            self.addr_abs = (((self.cpu_read(ptr + 1) as u16) << 8) | self.cpu_read(ptr + 0) as u16) as u16;
+            self.cpu_read(ptr, &mut lo);
+            self.cpu_read(ptr + 1, &mut hi);
+
+            self.addr_abs = lo as u16 | ((hi as u16) << 8);
         }
 
         return 0;
@@ -277,11 +286,14 @@ impl Cpu6502
     // The read 8-bit address is offset by X and used to read the 16-bit absolute address
     pub fn izx(&mut self) -> u8
     {
-        let t : u16 = self.cpu_read(self.pc) as u16;
+        let t : u16 = 0;
+        self.cpu_read(self.pc, &mut (t as u8));
 	    self.pc += 1;
 
-        let lo: u16 = self.cpu_read((t + self.x as u16) & 0x00FF) as u16;
-        let hi: u16 = self.cpu_read((t + self.x as u16 + 1) & 0x00FF) as u16;
+        let lo: u16 = 0;
+        self.cpu_read((t + self.x as u16) & 0x00FF, &mut (lo as u8));
+        let hi: u16 = 0;
+        self.cpu_read((t + self.x as u16 + 1) & 0x00FF, &mut (hi as u8));
 
         self.addr_abs = (hi << 8) | lo;
 
@@ -292,13 +304,16 @@ impl Cpu6502
     // If the offset changes a page, we need 1 additional clock cycle
     pub fn izy(&mut self) -> u8
     {
-        let t : u16 = self.cpu_read(self.pc) as u16;
-        self.pc += 1;
+        let t : u16 = 0;
+        self.cpu_read(self.pc, &mut (t as u8));
+	    self.pc += 1;
 
-        let lo: u16 = self.cpu_read(t & 0x00FF) as u16;
-        let hi: u16 = self.cpu_read((t + 1) & 0x00FF) as u16;
+        let lo: u16 = 0;
+        let hi: u16 = 0;
 
-        self.addr_abs = (hi << 8) | lo;
+        self.cpu_read(t & 0x00FF, &mut (lo as u8));
+        self.cpu_read((t + 1) & 0x00FF, &mut (hi as u8));
+        self.addr_abs = lo | (hi << 8);
         self.addr_abs += self.y as u16;
 
         if (self.addr_abs & 0xFF00) != (hi << 8)
@@ -485,9 +500,15 @@ impl Cpu6502
     fn read_pc_from_stack(&mut self)
     {
         self.stkp += 1;
-        self.pc = self.cpu_read(Cpu6502::STACK_START_ADDRESS + self.stkp as u16) as u16;
+        let mut lo: u8 = 0;
+        self.cpu_read(Cpu6502::STACK_START_ADDRESS + self.stkp as u16, &mut lo);
+        self.pc = lo as u16;
+
         self.stkp += 1;
-        self.pc |= (self.cpu_read(Cpu6502::STACK_START_ADDRESS + self.stkp as u16) as u16) << 8;
+        let mut hi: u8 = 0;
+        self.cpu_read(Cpu6502::STACK_START_ADDRESS + self.stkp as u16, &mut hi);
+
+        self.pc |= (hi as u16) << 8;
     }
 
     // Instruction: Break
@@ -507,8 +528,12 @@ impl Cpu6502
 
         // TODO: Not clear if we should vary behavior if an NMI happens while BRK is ongoing
         // Go to the interrupt vector
-        self.pc = self.cpu_read(Cpu6502::INTERRUPT_VECTOR[1]) as u16 |
-                    ((self.cpu_read(Cpu6502::INTERRUPT_VECTOR[0]) as u16) << 8);
+        let mut lo: u8 = 0;
+        let mut hi: u8 = 0;
+        self.cpu_read(Cpu6502::INTERRUPT_VECTOR[1], &mut lo);
+        self.cpu_read(Cpu6502::INTERRUPT_VECTOR[0], &mut hi);
+        self.pc = lo as u16 |
+                    ((hi as u16) << 8);
 
         return 0;
     }
@@ -795,7 +820,11 @@ impl Cpu6502
     pub fn pla(&mut self) -> u8 
     {
         self.stkp += 1;
-        self.a = self.cpu_read(Cpu6502::STACK_START_ADDRESS + self.stkp as u16);
+
+        let mut result: u8 = 0;
+        self.cpu_read(Cpu6502::STACK_START_ADDRESS + self.stkp as u16, &mut result);
+        self.a = result;
+
         self.set_flag(Flags6502::Z, self.a == 0x00); // Zero
         self.set_flag(Flags6502::N, self.a & 0x80 == 0x80); // Negative
         return 0;
@@ -806,7 +835,11 @@ impl Cpu6502
     pub fn plp(&mut self) -> u8 
     {
         self.stkp += 1;
-        self.status = self.cpu_read(Cpu6502::STACK_START_ADDRESS + self.stkp as u16);
+
+        let mut result: u8 = 0;
+        self.cpu_read(Cpu6502::STACK_START_ADDRESS + self.stkp as u16, &mut result);
+        self.status = result;
+        
         self.set_flag(Flags6502::U, true);
         return 0;
     }
@@ -862,7 +895,10 @@ impl Cpu6502
     pub fn rti(&mut self) -> u8 
     {
         self.stkp += 1;
-        self.status = self.cpu_read(Cpu6502::STACK_START_ADDRESS + self.stkp as u16);
+
+        let mut result = 0;
+        self.cpu_read(Cpu6502::STACK_START_ADDRESS + self.stkp as u16, &mut result);
+        self.status = result;
 
         // Zero out break and unused values, TODO: Why?
         self.status &= !(Flags6502::B as u8);
@@ -1045,32 +1081,6 @@ impl Cpu6502
         return 0;
     }
 
-    // Other signals
-    pub fn clock_tick(&mut self)
-    {
-        if self.cycles == 0
-        {
-            self.opcode = self.cpu_read(self.pc);
-
-            // TODO: Why?
-            self.set_flag(Flags6502::U, true);
-
-            self.pc += 1;
-
-            self.cycles = self.ins[self.opcode as usize].cycles;
-            let additional_cycle1: u8 = (self.ins[self.opcode as usize].addr_mode)(self);
-            let additional_cycle2: u8 = (self.ins[self.opcode as usize].op)(self);
-
-            // TODO: Why is this a binary AND?
-            self.cycles += additional_cycle1 & additional_cycle2;
-
-            // TODO: Why?
-            self.set_flag(Flags6502::U, true);
-        }
-
-         self.cycles -= 1;
-    }
-
     pub fn complete(&self) -> bool
     {
         return self.cycles == 0;
@@ -1081,20 +1091,24 @@ impl Cpu6502
         let mut map = BTreeMap::new();
 
         let mut addr: u32 = n_start as u32;
-        let mut value: u8;
-        let mut lo: u8;
-        let mut hi: u8;
+        let mut value: u8 = 0;
+        let mut lo: u8 = 0;
+        let mut hi: u8 = 0;
         let mut line_addr: u16;
 
         while addr <= n_end as u32
         {
             line_addr = addr as u16;
             let mut instruction: String = format!("${:04x}: ", addr);
-            let opcode = match &self.bus
+            let mut opcode: u8 = 0;
+            match &self.bus
+            {
+                Some(x) =>
                 {
-                    Some(x) => (*x.borrow()).cpu_read(addr as u16),
-                    None => panic!("Error, missing bus inside CPU")
-                };
+                    (*x.borrow()).cpu_read(addr as u16, &mut opcode)
+                },
+                None => panic!("Error, missing bus inside CPU")
+            };
 
             addr += 1;
             instruction += &self.ins[opcode as usize].name;
@@ -1105,79 +1119,79 @@ impl Cpu6502
             }
             else if self.ins[opcode as usize].addr_mode == Cpu6502::imm
             {
-                value = self.cpu_read(addr as u16);
+                self.cpu_read(addr as u16, &mut value);
                 addr += 1;
                 instruction += &String::from(format!(" #${:02x} {{IMM}}", value));
             }
             else if self.ins[opcode as usize].addr_mode == Cpu6502::zp0
             {
-                lo = self.cpu_read(addr as u16);
+                self.cpu_read(addr as u16, &mut lo);
                 addr += 1;
                 instruction += &String::from(format!(" ${:02x} {{ZP0}}", lo));
             }
             else if self.ins[opcode as usize].addr_mode == Cpu6502::zpx
             {
-                lo = self.cpu_read(addr as u16);
+                self.cpu_read(addr as u16, &mut lo);
                 addr += 1;
                 instruction += &String::from(format!(" ${:02x}, X {{ZPX}}", lo));
             }
             else if self.ins[opcode as usize].addr_mode == Cpu6502::zpy
             {
-                lo = self.cpu_read(addr as u16);
+                self.cpu_read(addr as u16, &mut lo);
                 addr += 1;
                 instruction += &String::from(format!(" ${:02x}, Y {{ZPY}}", lo));
             }
             else if self.ins[opcode as usize].addr_mode == Cpu6502::izx
             {
-                lo = self.cpu_read(addr as u16);
+                self.cpu_read(addr as u16, &mut lo);
                 addr += 1;
                 instruction += &String::from(format!(" (${:02x}), X {{IZX}}", lo));
             }
             else if self.ins[opcode as usize].addr_mode == Cpu6502::izy
             {
-                lo = self.cpu_read(addr as u16);
+                self.cpu_read(addr as u16, &mut lo);
                 addr += 1;
                 instruction += &String::from(format!(" (${:02x}), Y {{IZY}}", lo));
             }
             else if self.ins[opcode as usize].addr_mode == Cpu6502::abs
             {
-                lo = self.cpu_read(addr as u16);
+                self.cpu_read(addr as u16, &mut lo);
                 addr += 1;
-                hi = self.cpu_read(addr as u16);
+                self.cpu_read(addr as u16, &mut hi);
                 addr += 1;
                 let cur_addr = ((hi as u16) << 8) | lo as u16;
                 instruction += &String::from(format!(" ${:04x} {{ABS}}", cur_addr));
             }
             else if self.ins[opcode as usize].addr_mode == Cpu6502::abx
             {
-                lo = self.cpu_read(addr as u16);
+                self.cpu_read(addr as u16, &mut lo);
                 addr += 1;
-                hi = self.cpu_read(addr as u16);
+                self.cpu_read(addr as u16, &mut hi);
                 addr += 1;
                 let cur_addr = ((hi as u16) << 8) | lo as u16;
                 instruction += &String::from(format!(" ${:04x}, X {{ABX}}", cur_addr));
             }
             else if self.ins[opcode as usize].addr_mode == Cpu6502::aby
             {
-                lo = self.cpu_read(addr as u16);
+                self.cpu_read(addr as u16, &mut lo);
                 addr += 1;
-                hi = self.cpu_read(addr as u16);
+                self.cpu_read(addr as u16, &mut hi);
                 addr += 1;
                 let cur_addr = ((hi as u16) << 8) | lo as u16;
                 instruction += &String::from(format!(" ${:04x}, Y {{ABY}}", cur_addr));
             }
             else if self.ins[opcode as usize].addr_mode == Cpu6502::ind
             {
-                lo = self.cpu_read(addr as u16);
+                self.cpu_read(addr as u16, &mut lo);
                 addr += 1;
-                hi = self.cpu_read(addr as u16);
+                self.cpu_read(addr as u16, &mut hi);
                 addr += 1;
                 let cur_addr = ((hi as u16) << 8) | lo as u16;
                 instruction += &String::from(format!(" (${:04x}) {{IND}}", cur_addr));
             }
             else if self.ins[opcode as usize].addr_mode == Cpu6502::rel
             {
-                value = self.cpu_read(addr as u16);
+                self.cpu_read(addr as u16, &mut value);
                 addr += 1;
                 instruction += &String::from(format!(" ${:02x} [${:04x}] {{REL}}", value, addr as u16 + value as u16));
             }
@@ -1191,8 +1205,10 @@ impl Cpu6502
     pub fn reset(&mut self)
     {
         self.addr_abs = 0xFFFC;
-        let lo: u8 = self.cpu_read(self.addr_abs + 0);
-        let hi: u8 = self.cpu_read(self.addr_abs + 1);
+        let mut lo: u8 = 0;
+        self.cpu_read(self.addr_abs + 0, &mut lo);
+        let mut hi: u8 = 0;
+        self.cpu_read(self.addr_abs + 1, &mut hi);
     
         self.pc = ((hi as u16) << 8) | lo as u16;
 
@@ -1224,8 +1240,10 @@ impl Cpu6502
         
         // Read the new program counter location from a fixed address
         self.addr_abs = pc_read_addr;
-        let lo: u16 = self.cpu_read(self.addr_abs + 0) as u16;
-        let hi: u16 = self.cpu_read(self.addr_abs + 1) as u16;
+        let lo: u16 = 0;
+        self.cpu_read(self.addr_abs + 0, &mut (lo as u8)) as u16;
+        let hi: u16 = 0;
+        self.cpu_read(self.addr_abs + 1, &mut (hi as u8)) as u16;
 
         self.pc = (hi << 8) | lo;
 
@@ -1251,7 +1269,9 @@ impl Cpu6502
     {
         if self.ins[self.opcode as usize].addr_mode != Cpu6502::imp
         {
-            self.fetched_data = self.cpu_read(self.addr_abs);
+            let mut read_result: u8 = 0;
+            self.cpu_read(self.addr_abs, &mut read_result);
+            self.fetched_data = read_result;
         }
 
         return self.fetched_data;
@@ -1261,7 +1281,7 @@ impl Cpu6502
 
 impl ReadWrite for Cpu6502
 {
-    fn cpu_write(&mut self, address: u16, data: u8)
+    fn cpu_write(&mut self, address: u16, data: u8) -> bool
     {
         match &self.bus
         {
@@ -1270,22 +1290,52 @@ impl ReadWrite for Cpu6502
         }
     }
 
-    fn cpu_read(&self, address: u16) -> u8
+    fn cpu_read(&self, address: u16, data: &mut u8) -> bool
     {
         match &self.bus
         {
-            Some(x) => (*x.borrow_mut()).cpu_read(address),
+            Some(x) => (*x.borrow_mut()).cpu_read(address, data),
             None => panic!("Error, missing bus inside CPU")
         }
     }
 
-    fn ppu_write(&mut self, address: u16, data: u8)
+    fn ppu_write(&mut self, _: u16, _: u8) -> bool
     {
         todo!()
     }
 
-    fn ppu_read(&self, address: u16) -> u8
+    fn ppu_read(&self, _: u16, _: &mut u8) -> bool
     {
         todo!()
+    }
+}
+
+impl Clockable for Cpu6502
+{
+    fn clock_tick(&mut self)
+    {
+        if self.cycles == 0
+        {
+            let mut read_result: u8 = 0;
+            self.cpu_read(self.pc, &mut read_result);
+            self.opcode = read_result;
+
+            // TODO: Why?
+            self.set_flag(Flags6502::U, true);
+
+            self.pc += 1;
+
+            self.cycles = self.ins[self.opcode as usize].cycles;
+            let additional_cycle1: u8 = (self.ins[self.opcode as usize].addr_mode)(self);
+            let additional_cycle2: u8 = (self.ins[self.opcode as usize].op)(self);
+
+            // TODO: Why is this a binary AND?
+            self.cycles += additional_cycle1 & additional_cycle2;
+
+            // TODO: Why?
+            self.set_flag(Flags6502::U, true);
+        }
+
+         self.cycles -= 1;
     }
 }
