@@ -5,13 +5,12 @@ use crate::traits::Clockable;
 
 use traits::ReadWrite;
 use std::cell::RefCell;
-use std::io::Error;
 use std::rc::Rc;
 use std::collections::BTreeMap;
 use std::ops::Bound;
 
 use ggez::event;
-use ggez::graphics::{self};
+use ggez::graphics::{self, GraphicsContext};
 use ggez::{Context, GameResult};
 use ggez::glam::*;
 use ggez::graphics::Text;
@@ -34,11 +33,11 @@ struct MainState
 
 impl MainState
 {
-    fn new() -> GameResult<MainState>
+    fn new(ctx: &Context) -> GameResult<MainState>
     {
         let mut s = MainState
         {
-            bus: Rc::new(RefCell::new(MainBus::new())),
+            bus: Rc::new(RefCell::new(MainBus::new(ctx))),
             map_asm: BTreeMap::new(),
             emulation_run: false,
             residual_time: 0.0
@@ -301,14 +300,13 @@ impl event::EventHandler<ggez::GameError> for MainState
             graphics::Color::from([0.0, 0.0, 1.0, 1.0]),
         );
 
-        MainState::draw_cpu_ram(self, 2, 2, 0x0000, 16, 16, &mut canvas);
-        MainState::draw_cpu_ram(self, 2, 250, 0x8000, 16, 16, &mut canvas);
+        // MainState::draw_cpu_ram(self, 2, 2, 0x0000, 16, 16, &mut canvas);
+        // MainState::draw_cpu_ram(self, 2, 250, 0x8000, 16, 16, &mut canvas);
         MainState::draw_cpu(self, 475.0, 2.0, &mut canvas);
         MainState::draw_code(self, 475.0, 100.0, 27, &mut canvas);
-        
-        canvas.draw(&Text::new("SPACE = Step Instruction    R = RESET    I = IRQ    N = NMI"),
-            Vec2::new(10.0, 500.0));
 
+        let ppu = self.bus.borrow_mut().get_ppu();
+        ppu.borrow_mut().render(ctx, &mut canvas);
         canvas.finish(ctx)?;
         Ok(())
     }
@@ -318,6 +316,6 @@ fn main() -> GameResult
 {
     let cb = ggez::ContextBuilder::new("super_simple", "ggez");
     let (ctx, event_loop) = cb.build()?;
-    let state = MainState::new()?;
+    let state = MainState::new(&ctx)?;
     event::run(ctx, event_loop, state);
 }

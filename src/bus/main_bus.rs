@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::cell::RefCell;
+use ggez::Context;
+
 use crate::traits::{ReadWrite, Clockable};
 
 use crate::memory::ram::Ram;
@@ -28,14 +30,14 @@ pub struct MainBus
 
 impl MainBus
 {
-    pub fn new() -> Self
+    pub fn new(ctx: &Context) -> Self
     {
         let mut s = MainBus
         {
             system_address_ranges: HashMap::new(),
             cpu_ram: Rc::new(RefCell::new(Ram::new(0x1FFF, 0x07FF))),
             cpu: Rc::new(RefCell::new(Cpu6502::new())),
-            ppu: Rc::new(RefCell::new(Ppu2c02::new())),
+            ppu: Rc::new(RefCell::new(Ppu2c02::new(ctx))),
             cartridge: None,
             system_clock_counter: 0
         };
