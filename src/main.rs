@@ -3,7 +3,7 @@ use cartridge::cart::Cart;
 use crate::cpu::cpu6502::Flags6502;
 use crate::traits::Clockable;
 
-use traits::ReadWrite;
+use traits::{ReadWrite};
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::collections::BTreeMap;
@@ -67,7 +67,7 @@ impl MainState
         s.map_asm = cpu.borrow().disassemble(0x0000, 0xFFFF);
 
         // Reset the CPU
-        s.bus.borrow_mut().reset();
+        s.reset();
 
         Ok(s)
     }
@@ -197,7 +197,30 @@ impl MainState
         }
     }
 
+    fn reset(&mut self)
+    {
+        let cpu = self.bus.borrow_mut().get_cpu();
+        cpu.borrow_mut().reset();
+    }
 
+}
+
+impl Clockable for MainState
+{
+    fn clock_tick(&mut self)
+    {
+        let cpu = self.bus.borrow_mut().get_cpu();
+        let ppu = self.bus.borrow_mut().get_ppu();
+        let clock_counter = self.bus.borrow().get_clock_counter();
+
+        ppu.borrow_mut().clock_tick();
+        if clock_counter % 3 == 0
+        {
+            cpu.borrow_mut().clock_tick();
+        }
+
+        self.bus.borrow_mut().increment_clock_counter();
+    }
 }
 
 impl event::EventHandler<ggez::GameError> for MainState
@@ -219,7 +242,7 @@ impl event::EventHandler<ggez::GameError> for MainState
                 self.residual_time += (1.0 / 60.0) - ctx.time.delta().as_secs_f32();
                 loop
                 {
-                    self.bus.borrow_mut().clock_tick();
+                    self.clock_tick();
                     if self.bus.borrow_mut().get_ppu().borrow().frame_complete()
                     {
                         break;
@@ -236,7 +259,7 @@ impl event::EventHandler<ggez::GameError> for MainState
             {   
                 loop
                 {
-                    self.bus.borrow_mut().clock_tick();
+                    self.clock_tick();
                     if cpu.borrow().complete()
                     {
                         break;
@@ -246,7 +269,7 @@ impl event::EventHandler<ggez::GameError> for MainState
                 // Since the CPU runs slower, clear out any leftover instructions
                 loop
                 {
-                    self.bus.borrow_mut().clock_tick();
+                    self.clock_tick();
                     if !cpu.borrow().complete()
                     {
                         break;
@@ -256,14 +279,14 @@ impl event::EventHandler<ggez::GameError> for MainState
 
             if ctx.keyboard.is_key_just_pressed(ggez::input::keyboard::KeyCode::R)
             {
-                self.bus.borrow_mut().reset();
+                self.reset();
             }
 
             if ctx.keyboard.is_key_just_pressed(ggez::input::keyboard::KeyCode::F)
             {   
                 loop
                 {
-                    self.bus.borrow_mut().clock_tick();
+                    self.clock_tick();
                     if self.bus.borrow_mut().get_ppu().borrow().frame_complete()
                     {
                         break;
@@ -273,7 +296,7 @@ impl event::EventHandler<ggez::GameError> for MainState
                 // Since the CPU runs slower, clear out any leftover instructions
                 loop
                 {
-                    self.bus.borrow_mut().clock_tick();
+                    self.clock_tick();
                     if !cpu.borrow().complete()
                     {
                         break;

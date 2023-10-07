@@ -3,7 +3,7 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use ggez::Context;
 
-use crate::traits::{ReadWrite, Clockable};
+use crate::traits::ReadWrite;
 
 use crate::memory::ram::Ram;
 use crate::cpu::cpu6502::Cpu6502;
@@ -76,12 +76,7 @@ impl MainBus
 
         self.ppu.borrow_mut().connect_cartridge(Rc::clone(&cartridge));
     }
-
-    pub fn reset(&self)
-    {
-
-    }
-
+    
     pub fn get_cpu(&mut self) -> Rc<RefCell<Cpu6502>>
     {
         return Rc::clone(&self.cpu);
@@ -91,6 +86,17 @@ impl MainBus
     {
         return Rc::clone(&self.ppu);
     }
+
+    pub fn get_clock_counter(&self) -> u32
+    {
+        return self.system_clock_counter;
+    }
+
+    pub fn increment_clock_counter(&mut self)
+    {
+        self.system_clock_counter +=  1;
+    }
+
 }
 
 impl ReadWrite for MainBus
@@ -163,19 +169,5 @@ impl ReadWrite for MainBus
     fn ppu_read(&self, _: u16, _: &mut u8) -> bool
     {
         panic!("Main bus cannot be read by PPU");   
-    }
-}
-
-impl Clockable for MainBus
-{
-    fn clock_tick(&mut self)
-    {
-        self.ppu.borrow_mut().clock_tick();
-        if self.system_clock_counter % 3 == 0
-        {
-            self.cpu.borrow_mut().clock_tick();
-        }
-
-        self.system_clock_counter += 1;
     }
 }

@@ -1294,7 +1294,7 @@ impl ReadWrite for Cpu6502
     {
         match &self.bus
         {
-            Some(x) => (*x.borrow_mut()).cpu_read(address, data),
+            Some(x) => (*x.borrow()).cpu_read(address, data),
             None => panic!("Error, missing bus inside CPU")
         }
     }
