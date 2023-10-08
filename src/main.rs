@@ -199,6 +199,10 @@ impl MainState
 
     fn reset(&mut self)
     {
+        // Reset the main bus
+        self.bus.borrow_mut().reset();
+
+        // Reset the CPU
         let cpu = self.bus.borrow_mut().get_cpu();
         cpu.borrow_mut().reset();
     }
@@ -325,8 +329,8 @@ impl event::EventHandler<ggez::GameError> for MainState
 
         // MainState::draw_cpu_ram(self, 2, 2, 0x0000, 16, 16, &mut canvas);
         // MainState::draw_cpu_ram(self, 2, 250, 0x8000, 16, 16, &mut canvas);
-        MainState::draw_cpu(self, 475.0, 2.0, &mut canvas);
-        MainState::draw_code(self, 475.0, 100.0, 27, &mut canvas);
+        MainState::draw_cpu(self, 525.0, 2.0, &mut canvas);
+        MainState::draw_code(self, 525.0, 100.0, 27, &mut canvas);
 
         let ppu = self.bus.borrow_mut().get_ppu();
         ppu.borrow_mut().render(ctx, &mut canvas);
@@ -337,8 +341,10 @@ impl event::EventHandler<ggez::GameError> for MainState
 
 fn main() -> GameResult
 {
-    let cb = ggez::ContextBuilder::new("super_simple", "ggez");
-    let (ctx, event_loop) = cb.build()?;
+    let (ctx, event_loop) = ggez::ContextBuilder::new("singularity-emu", "jsmrcina")
+        .window_setup(ggez::conf::WindowSetup::default().title("Singularity Emu"))
+        .window_mode(ggez::conf::WindowMode::default().dimensions(780.0, 480.0))
+        .build()?;
     let state = MainState::new(&ctx)?;
     event::run(ctx, event_loop, state);
 }

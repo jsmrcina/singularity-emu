@@ -97,6 +97,11 @@ impl MainBus
         self.system_clock_counter +=  1;
     }
 
+    pub fn reset(&mut self)
+    {
+        self.system_clock_counter = 0;
+    }
+
 }
 
 impl ReadWrite for MainBus

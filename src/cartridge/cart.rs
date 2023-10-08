@@ -18,7 +18,7 @@ struct InesHeader
     _prg_ram_size: u8,
     _tv_system_1: u8,
     _tv_system_2: u8,
-    _unused: [u8; 8]
+    _unused: [u8; 5]
 }
 
 impl InesHeader
@@ -35,7 +35,9 @@ impl InesHeader
         let _prg_ram_size = reader.read_u8()?;
         let _tv_system_1 = reader.read_u8()?;
         let _tv_system_2 = reader.read_u8()?;
-        let _unused = [0u8; 8];
+
+        let mut _unused = [0u8; 5];
+        reader.read_exact(&mut _unused)?;
 
         Ok(InesHeader {
             _name,

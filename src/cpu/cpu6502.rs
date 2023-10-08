@@ -117,17 +117,17 @@ impl Cpu6502
 
     pub fn cpu_read_u16_from_pc(&mut self) -> (bool, u16, u16, u16)
     {
-        let lo: u16 = 0;
-        let hi: u16 = 0;
+        let mut lo: u8 = 0;
+        let mut hi: u8 = 0;
         let data: u16;
 
-        self.cpu_read(self.pc, &mut (lo as u8));
+        self.cpu_read(self.pc, &mut lo);
         self.pc += 1;
-        self.cpu_read(self.pc, &mut (hi as u8));
+        self.cpu_read(self.pc, &mut hi);
         self.pc += 1;
 
-        data = (hi << 8) | lo;
-        return (true, hi, lo, data);
+        data = ((hi as u16) << 8) | (lo as u16);
+        return (true, hi as u16, lo as u16, data);
     }
 
     pub fn get_pc(&self) -> u16
@@ -173,7 +173,9 @@ impl Cpu6502
     pub fn zp0(&mut self) -> u8
     {
         // Address in the zero page (plus a byte offset that is read)
-        self.cpu_read(self.pc, &mut (self.addr_abs as u8));
+        let mut addr_abs_u8: u8 = 0;
+        self.cpu_read(self.pc, &mut addr_abs_u8);
+        self.addr_abs = addr_abs_u8 as u16;
         self.pc += 1;
         self.addr_abs &= 0x00FF;
         return 0;
@@ -183,8 +185,9 @@ impl Cpu6502
     {
         // Address in the zero page (plus a byte offset that is read and incremented by X register)
         // This is used for iterating through ranges in zero page
-        self.cpu_read(self.pc, &mut (self.addr_abs as u8));
-        self.addr_abs += self.x as u16;
+        let mut addr_abs_u8: u8 = 0;
+        self.cpu_read(self.pc, &mut addr_abs_u8);
+        self.addr_abs = addr_abs_u8 as u16 + self.x as u16;
         self.pc += 1;
         self.addr_abs &= 0x00FF;
         return 0;
@@ -193,8 +196,9 @@ impl Cpu6502
     pub fn zpy(&mut self) -> u8
     {
         // Address in the zero page (plus a byte offset that is read and incremented by Y register)
-        self.cpu_read(self.pc, &mut (self.addr_abs as u8));
-        self.addr_abs += self.y as u16;
+        let mut addr_abs_u8: u8 = 0;
+        self.cpu_read(self.pc, &mut addr_abs_u8);
+        self.addr_abs = addr_abs_u8 as u16 + self.y as u16;
         self.pc += 1;
         self.addr_abs &= 0x00FF;
         return 0;
@@ -202,7 +206,9 @@ impl Cpu6502
 
     pub fn rel(&mut self) -> u8
     {
-        self.cpu_read(self.pc, &mut (self.addr_rel as u8));
+        let mut addr_rel_u8: u8 = 0;
+        self.cpu_read(self.pc, &mut addr_rel_u8);
+        self.addr_rel = addr_rel_u8 as u16;
         self.pc += 1;
 
         // If we have a negative offset, we need to set upper bits to 1
@@ -286,16 +292,17 @@ impl Cpu6502
     // The read 8-bit address is offset by X and used to read the 16-bit absolute address
     pub fn izx(&mut self) -> u8
     {
-        let t : u16 = 0;
-        self.cpu_read(self.pc, &mut (t as u8));
+        let mut t : u8 = 0;
+        self.cpu_read(self.pc, &mut t);
+        let t_u16 = t as u16;
 	    self.pc += 1;
 
-        let lo: u16 = 0;
-        self.cpu_read((t + self.x as u16) & 0x00FF, &mut (lo as u8));
-        let hi: u16 = 0;
-        self.cpu_read((t + self.x as u16 + 1) & 0x00FF, &mut (hi as u8));
+        let mut lo: u8 = 0;
+        self.cpu_read((t_u16 + self.x as u16) & 0x00FF, &mut lo);
+        let mut hi: u8 = 0;
+        self.cpu_read((t_u16 + self.x as u16 + 1) & 0x00FF, &mut hi);
 
-        self.addr_abs = (hi << 8) | lo;
+        self.addr_abs = ((hi as u16) << 8) | lo as u16;
 
         return 0;
     }
@@ -304,19 +311,20 @@ impl Cpu6502
     // If the offset changes a page, we need 1 additional clock cycle
     pub fn izy(&mut self) -> u8
     {
-        let t : u16 = 0;
-        self.cpu_read(self.pc, &mut (t as u8));
+        let mut t : u8 = 0;
+        self.cpu_read(self.pc, &mut t);
+        let t_u16 = t as u16;
 	    self.pc += 1;
 
-        let lo: u16 = 0;
-        let hi: u16 = 0;
+        let mut lo: u8 = 0;
+        let mut hi: u8 = 0;
 
-        self.cpu_read(t & 0x00FF, &mut (lo as u8));
-        self.cpu_read((t + 1) & 0x00FF, &mut (hi as u8));
-        self.addr_abs = lo | (hi << 8);
+        self.cpu_read(t_u16 & 0x00FF, &mut lo);
+        self.cpu_read((t_u16 + 1) & 0x00FF, &mut hi);
+        self.addr_abs = (lo as u16) | ((hi as u16) << 8);
         self.addr_abs += self.y as u16;
 
-        if (self.addr_abs & 0xFF00) != (hi << 8)
+        if (self.addr_abs & 0xFF00) != ((hi as u16) << 8)
         {
             return 1;
         }
@@ -399,7 +407,7 @@ impl Cpu6502
     fn branch(&mut self)
     {
         self.cycles += 1;
-         let overflow_addr: u32 = self.pc as u32 + self.addr_rel as u32;
+        let overflow_addr: u32 = self.pc as u32 + self.addr_rel as u32;
         self.addr_abs = overflow_addr as u16;
 
         if (self.addr_abs & 0xFF00) != (self.pc & 0xFF00)
@@ -634,7 +642,7 @@ impl Cpu6502
     // Function: X = X - 1
     pub fn dex(&mut self) -> u8 
     {
-        self.x -= 1;
+        self.x = self.x.wrapping_sub(1);
         self.set_flag(Flags6502::Z, self.x == 0x00);
         self.set_flag(Flags6502::N, (self.x & 0x80) == 0x80);
         return 0;
@@ -644,7 +652,7 @@ impl Cpu6502
     // Function: Y = Y - 1
     pub fn dey(&mut self) -> u8 
     {
-        self.y -= 1;
+        self.y = self.y.wrapping_sub(1);
         self.set_flag(Flags6502::Z, self.y == 0x00);
         self.set_flag(Flags6502::N, (self.y & 0x80) == 0x80);
         return 0;
@@ -1193,7 +1201,7 @@ impl Cpu6502
             {
                 self.cpu_read(addr as u16, &mut value);
                 addr += 1;
-                instruction += &String::from(format!(" ${:02x} [${:04x}] {{REL}}", value, addr as u16 + value as u16));
+                instruction += &String::from(format!(" ${:02x} [${:04x}] {{REL}}", value, addr as i32 + (value as i8) as i32));
             }
 
             map.insert(line_addr, instruction);
@@ -1240,12 +1248,12 @@ impl Cpu6502
         
         // Read the new program counter location from a fixed address
         self.addr_abs = pc_read_addr;
-        let lo: u16 = 0;
-        self.cpu_read(self.addr_abs + 0, &mut (lo as u8)) as u16;
-        let hi: u16 = 0;
-        self.cpu_read(self.addr_abs + 1, &mut (hi as u8)) as u16;
+        let mut lo: u8 = 0;
+        self.cpu_read(self.addr_abs + 0, &mut lo) as u16;
+        let mut hi: u8 = 0;
+        self.cpu_read(self.addr_abs + 1, &mut hi) as u16;
 
-        self.pc = (hi << 8) | lo;
+        self.pc = ((hi as u16) << 8) | (lo as u16);
 
         // Add cycles for IRQ to complete
         self.cycles = num_cycles;

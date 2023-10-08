@@ -1,6 +1,6 @@
 use std::{cell::RefCell, rc::Rc};
 
-use ggez::{graphics::{self, ImageFormat}, Context, GameResult};
+use ggez::{graphics::{self, ImageFormat, Sampler}, Context, GameResult};
 
 use crate::{traits::{ReadWrite, Clockable}, cartridge::cart::Cart};
 
@@ -156,18 +156,18 @@ impl Clockable for Ppu2c02
     fn clock_tick(&mut self)
     {
         // Set the pixel to white
-        // let mut rng = rand::thread_rng();
+        let mut rng = rand::thread_rng();
 
-        // let num = rng.gen_range(1..=2);
-        // if num == 1
-        // {
-        //     self.renderer.set_screen_pixel_to_color(self.renderer.pal_colors[0x30], self.cycle - 1, self.scan_line);
-        // }
-        // else
-        // {
-        //     self.renderer.set_screen_pixel_to_color(self.renderer.pal_colors[0x3f], self.cycle - 1, self.scan_line);
-        // }
-
+        // println!("{:?} {:?}", self.scan_line, self.cycle);
+        let num = rng.gen_range(1..=2);
+        if num == 1
+        {
+            self.renderer.set_screen_pixel_to_color(self.renderer.pal_colors[0x30], self.scan_line, self.cycle - 1);
+        }
+        else
+        {
+            self.renderer.set_screen_pixel_to_color(self.renderer.pal_colors[0x3f], self.scan_line, self.cycle - 1);
+        }
 
         self.cycle += 1;
         if self.cycle >= 341
@@ -184,19 +184,19 @@ impl Clockable for Ppu2c02
 }
 
 const PIXEL_DEPTH: usize = 4;
-const SCREEN_WIDTH: usize = 256;
-const SCREEN_HEIGHT: usize = 240;
-const NAME_WIDTH: usize = 256;
-const NAME_HEIGHT: usize = 240;
-const PATTERN_WIDTH: usize = 128;
-const PATTERN_HEIGHT: usize = 128;
+const SCREEN_ROWS: usize = 256;
+const SCREEN_COLS: usize = 240;
+const NAME_ROWS: usize = 256;
+const NAME_COLS: usize = 240;
+const PATTERN_ROWS: usize = 128;
+const PATTERN_COLS: usize = 128;
 
 pub struct Ppu2c02Renderer
 {
     pal_colors: Box<[graphics::Color; 0x40]>,
-    screen_pixels: Box<[u8; SCREEN_WIDTH * SCREEN_HEIGHT * PIXEL_DEPTH]>,
-    name_table: [Box<[u8; NAME_WIDTH * NAME_HEIGHT * PIXEL_DEPTH]>; 2],
-    pattern_table: [Box<[u8; PATTERN_WIDTH * PATTERN_HEIGHT * PIXEL_DEPTH]>; 2],
+    screen_pixels: Box<[u8; SCREEN_ROWS * SCREEN_COLS * PIXEL_DEPTH]>,
+    name_table: [Box<[u8; NAME_ROWS * NAME_COLS * PIXEL_DEPTH]>; 2],
+    pattern_table: [Box<[u8; PATTERN_ROWS * PATTERN_COLS * PIXEL_DEPTH]>; 2],
 }
 
 impl Ppu2c02Renderer
@@ -278,9 +278,9 @@ impl Ppu2c02Renderer
             ]),
             
 
-            screen_pixels: Box::new([0u8; SCREEN_WIDTH * SCREEN_HEIGHT * PIXEL_DEPTH]),
-            name_table: [Box::new([0u8; NAME_WIDTH * NAME_HEIGHT * PIXEL_DEPTH]),  Box::new([0u8; NAME_WIDTH * NAME_HEIGHT * PIXEL_DEPTH])],
-            pattern_table: [Box::new([0u8; PATTERN_WIDTH * PATTERN_HEIGHT * PIXEL_DEPTH]),  Box::new([0u8; PATTERN_WIDTH * PATTERN_HEIGHT * PIXEL_DEPTH])]
+            screen_pixels: Box::new([0u8; SCREEN_ROWS * SCREEN_COLS * PIXEL_DEPTH]),
+            name_table: [Box::new([0u8; NAME_ROWS * NAME_COLS * PIXEL_DEPTH]),  Box::new([0u8; NAME_ROWS * NAME_COLS * PIXEL_DEPTH])],
+            pattern_table: [Box::new([0u8; PATTERN_ROWS * PATTERN_COLS * PIXEL_DEPTH]),  Box::new([0u8; PATTERN_ROWS * PATTERN_COLS * PIXEL_DEPTH])]
         };
 
         return ret;
@@ -289,18 +289,28 @@ impl Ppu2c02Renderer
 
     pub fn render(&mut self, ctx: &mut Context, canvas: &mut ggez::graphics::Canvas)
     {
-        // let image = graphics::Image::from_pixels(ctx, self.screen_pixels.as_slice(), ImageFormat::Rgba8UnormSrgb, SCREEN_WIDTH as u32, SCREEN_HEIGHT as u32);
-        let image = graphics::Image::from_color(ctx, 32, 32, Some(graphics::Color::WHITE));
+        let image = graphics::Image::from_pixels(ctx, self.screen_pixels.as_slice(), ImageFormat::Rgba8UnormSrgb, SCREEN_ROWS as u32, SCREEN_COLS as u32);
+
+        let draw_params = graphics::DrawParam::new()
+            .dest(Vec2::new(0.0, 0.0))
+            .scale(Vec2::new(2.0, 2.0));
         
-        image.draw(canvas, Vec2::new(0.0, 0.0));
+        canvas.set_sampler(Sampler::from(graphics::FilterMode::Nearest));
+        image.draw(canvas, draw_params);
     }
 
     fn set_screen_pixel_to_color(&mut self, color: graphics::Color, row: i32, col: i32)
     {
-        self.screen_pixels[(row as usize * SCREEN_WIDTH) + col as usize + 0] = color.to_rgba().0;
-        self.screen_pixels[(row as usize * SCREEN_WIDTH) + col as usize + 1] = color.to_rgba().1;
-        self.screen_pixels[(row as usize * SCREEN_WIDTH) + col as usize + 2] = color.to_rgba().2;
-        self.screen_pixels[(row as usize * SCREEN_WIDTH) + col as usize + 3] = 255; // No alpha blending, always opaque
+        if row < 0 || row >= SCREEN_ROWS as i32 || col < 0 || col >= SCREEN_COLS as i32
+        {
+            // Do nothing
+            return;
+        }
+
+        self.screen_pixels[(row as usize * SCREEN_COLS * PIXEL_DEPTH) + (col as usize * PIXEL_DEPTH) + 0] = color.to_rgba().0;
+        self.screen_pixels[(row as usize * SCREEN_COLS * PIXEL_DEPTH) + (col as usize * PIXEL_DEPTH) + 1] = color.to_rgba().1;
+        self.screen_pixels[(row as usize * SCREEN_COLS * PIXEL_DEPTH) + (col as usize * PIXEL_DEPTH) + 2] = color.to_rgba().2;
+        self.screen_pixels[(row as usize * SCREEN_COLS * PIXEL_DEPTH) + (col as usize * PIXEL_DEPTH) + 3] = 255; // No alpha blending, always opaque
     }
 
 
