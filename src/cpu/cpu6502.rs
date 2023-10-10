@@ -603,7 +603,8 @@ impl Cpu6502
     fn cmp_helper<F>(&mut self, closure: F) where F: Fn(&Cpu6502) -> u8
     {
         self.fetch();
-        let temp: u16 = closure(self) as u16 - self.fetched_data as u16;
+        let captured_var = closure(self) as u16;
+        let temp: u16 = captured_var.overflowing_sub(self.fetched_data as u16).0;
         self.set_flag(Flags6502::C, self.a >= self.fetched_data);
         self.set_flag(Flags6502::Z, (temp & 0x00FF) == 0x0000);
         self.set_flag(Flags6502::N, temp & 0x0080 == 0x0080);
@@ -674,7 +675,7 @@ impl Cpu6502
     pub fn inc(&mut self) -> u8 
     {
         self.fetch();
-        let temp: u16 = self.fetched_data as u16 + 1;
+        let temp: u16 = (self.fetched_data as u16).overflowing_add(1).0;
         self.cpu_write(self.addr_abs, (temp & 0x00FF) as u8);
         self.set_flag(Flags6502::Z, (temp & 0x00FF) == 0x0000);
         self.set_flag(Flags6502::N, (temp & 0x0080) == 0x0080);
@@ -685,7 +686,7 @@ impl Cpu6502
     // Function: X = X + 1
     pub fn inx(&mut self) -> u8 
     {
-        self.x += 1;
+        self.x = self.x.overflowing_add(1).0;
         self.set_flag(Flags6502::Z, self.x == 0x00);
         self.set_flag(Flags6502::N, (self.x & 0x80) == 0x80);
         return 0;
@@ -695,7 +696,7 @@ impl Cpu6502
     // Function: Y = Y + 1
     pub fn iny(&mut self) -> u8 
     {
-        self.y += 1;
+        self.y = self.y.overflowing_add(1).0;
         self.set_flag(Flags6502::Z, self.y == 0x00);
         self.set_flag(Flags6502::N, (self.y & 0x80) == 0x80);
         return 0;
@@ -1094,7 +1095,7 @@ impl Cpu6502
         return self.cycles == 0;
     }
 
-    pub fn disassemble(&self, n_start: u16, n_end: u16) -> BTreeMap<u16, String>
+    pub fn disassemble(&mut self, n_start: u16, n_end: u16) -> BTreeMap<u16, String>
     {
         let mut map = BTreeMap::new();
 
@@ -1113,7 +1114,7 @@ impl Cpu6502
             {
                 Some(x) =>
                 {
-                    (*x.borrow()).cpu_read(addr as u16, &mut opcode)
+                    (*x.borrow_mut()).cpu_read(addr as u16, &mut opcode)
                 },
                 None => panic!("Error, missing bus inside CPU")
             };
@@ -1298,11 +1299,11 @@ impl ReadWrite for Cpu6502
         }
     }
 
-    fn cpu_read(&self, address: u16, data: &mut u8) -> bool
+    fn cpu_read(&mut self, address: u16, data: &mut u8) -> bool
     {
         match &self.bus
         {
-            Some(x) => (*x.borrow()).cpu_read(address, data),
+            Some(x) => (*x.borrow_mut()).cpu_read(address, data),
             None => panic!("Error, missing bus inside CPU")
         }
     }

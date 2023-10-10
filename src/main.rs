@@ -28,7 +28,8 @@ struct MainState
     bus: Rc<RefCell<MainBus>>,
     map_asm: BTreeMap<u16, String>,
     emulation_run: bool,
-    residual_time: f32
+    residual_time: f32,
+    selected_palette: u8
 }
 
 impl MainState
@@ -40,7 +41,8 @@ impl MainState
             bus: Rc::new(RefCell::new(MainBus::new(ctx))),
             map_asm: BTreeMap::new(),
             emulation_run: false,
-            residual_time: 0.0
+            residual_time: 0.0,
+            selected_palette: 0
         };
 
         // Link the CPU to the BUS
@@ -64,7 +66,7 @@ impl MainState
 
         // Dissemble code into our main state so we can render it\
         let cpu = s.bus.borrow_mut().get_cpu();
-        s.map_asm = cpu.borrow().disassemble(0x0000, 0xFFFF);
+        s.map_asm = cpu.borrow_mut().disassemble(0x0000, 0xFFFF);
 
         // Reset the CPU
         s.reset();
@@ -86,7 +88,7 @@ impl MainState
             for _ in 0..n_cols
             {
                 let mut data: u8 = 0;
-                self.bus.borrow().cpu_read(n_addr, &mut data);
+                self.bus.borrow_mut().cpu_read(n_addr, &mut data);
                 s_offset = s_offset + &format!(" {:02x}", data);
                 n_addr = n_addr + 1;
             }
@@ -281,11 +283,6 @@ impl event::EventHandler<ggez::GameError> for MainState
                 }
             }
 
-            if ctx.keyboard.is_key_just_pressed(ggez::input::keyboard::KeyCode::R)
-            {
-                self.reset();
-            }
-
             if ctx.keyboard.is_key_just_pressed(ggez::input::keyboard::KeyCode::F)
             {   
                 loop
@@ -311,9 +308,20 @@ impl event::EventHandler<ggez::GameError> for MainState
             }
         }
 
+        if ctx.keyboard.is_key_just_pressed(ggez::input::keyboard::KeyCode::R)
+        {
+            self.reset();
+        }
+
         if ctx.keyboard.is_key_just_pressed(ggez::input::keyboard::KeyCode::Space)
         {
             self.emulation_run = !self.emulation_run;
+        }
+
+        if ctx.keyboard.is_key_just_pressed(ggez::input::keyboard::KeyCode::P)
+        {
+            self.selected_palette += 1;
+            self.selected_palette %= 7;
         }
         
         Ok(())
@@ -333,7 +341,7 @@ impl event::EventHandler<ggez::GameError> for MainState
         MainState::draw_code(self, 525.0, 100.0, 27, &mut canvas);
 
         let ppu = self.bus.borrow_mut().get_ppu();
-        ppu.borrow_mut().render(ctx, &mut canvas);
+        ppu.borrow_mut().render(ctx, &mut canvas, self.selected_palette);
         canvas.finish(ctx)?;
         Ok(())
     }
@@ -343,7 +351,7 @@ fn main() -> GameResult
 {
     let (ctx, event_loop) = ggez::ContextBuilder::new("singularity-emu", "jsmrcina")
         .window_setup(ggez::conf::WindowSetup::default().title("Singularity Emu"))
-        .window_mode(ggez::conf::WindowMode::default().dimensions(780.0, 480.0))
+        .window_mode(ggez::conf::WindowMode::default().dimensions(1280.0, 1024.0))
         .build()?;
     let state = MainState::new(&ctx)?;
     event::run(ctx, event_loop, state);

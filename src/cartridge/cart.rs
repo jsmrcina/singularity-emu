@@ -133,7 +133,7 @@ impl ReadWrite for Cart
         return handled;
     }
 
-    fn cpu_read(&self, address: u16, data: &mut u8) -> bool
+    fn cpu_read(&mut self, address: u16, data: &mut u8) -> bool
     {
         let mut mapped_addr: u32 = 0;
         let handled;
