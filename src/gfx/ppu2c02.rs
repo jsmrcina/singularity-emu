@@ -464,7 +464,7 @@ impl ReadWrite for Ppu2c02
 
                 // Palette memory has no delay, so special case it here
                 // TODO: Make constants from the memory ranges
-                if self.vram_addr.get_field() > 0x3F00
+                if self.vram_addr.get_field() >= 0x3F00
                 {
                     *data = self.ppu_data_buffer;
                 }
@@ -486,7 +486,7 @@ impl ReadWrite for Ppu2c02
 
     fn ppu_write(&mut self, address: u16, data: u8) -> bool
     {
-        let mut_addr = address & 0x3FFF;
+        let mut mut_addr = address & 0x3FFF;
         let handled;
 
         match &self.cartridge
@@ -509,6 +509,8 @@ impl ReadWrite for Ppu2c02
             }
             else if mut_addr >= 0x2000 && mut_addr < 0x3EFF
             {
+                mut_addr &= 0x0FFF;
+
                 match &self.cartridge
                 {
                     Some(x) =>
@@ -518,7 +520,7 @@ impl ReadWrite for Ppu2c02
                         {
                             MirrorMode::Vertical =>
                             {
-                                    if mut_addr <= 0x03FF
+                                if mut_addr <= 0x03FF
                                 {
                                     self.renderer.name_table[0][(mut_addr & 0x03FF) as usize] = data;
                                 }
@@ -583,7 +585,7 @@ impl ReadWrite for Ppu2c02
 
     fn ppu_read(&self, address: u16, data: &mut u8) -> bool
     {
-        let mut_addr = address & 0x3FFF;
+        let mut mut_addr = address & 0x3FFF;
         let handled;
 
         match &self.cartridge
@@ -610,6 +612,8 @@ impl ReadWrite for Ppu2c02
             }
             else if mut_addr >= 0x2000 && mut_addr < 0x3EFF
             {
+                mut_addr &= 0x0FFF;
+
                 match &self.cartridge
                 {
                     Some(x) =>
@@ -672,7 +676,17 @@ impl ReadWrite for Ppu2c02
                 if address_masked == 0x0014 { address_masked = 0x0004; }
                 if address_masked == 0x0018 { address_masked = 0x0008; }
                 if address_masked == 0x001C { address_masked = 0x000C; }
-                *data = self.palettes[address_masked as usize];
+
+                if self.mask.grayscale()
+                {
+                    *data = self.palettes[address_masked as usize] & 0x30;
+
+                }
+                else
+                {
+                    *data = self.palettes[address_masked as usize] & 0x3F;
+                }
+
             }
             else
             {
