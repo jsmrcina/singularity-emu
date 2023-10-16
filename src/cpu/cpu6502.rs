@@ -631,7 +631,7 @@ impl Cpu6502
     pub fn dec(&mut self) -> u8 
     {
         self.fetch();
-        let temp: u16 = self.fetched_data as u16 - 1;
+        let temp: u16 = (self.fetched_data as u16).wrapping_sub(1);
         self.cpu_write(self.addr_abs, (temp & 0x00FF) as u8);
         self.set_flag(Flags6502::Z, (temp & 0x00FF) == 0x0000);
         self.set_flag(Flags6502::N, (temp & 0x0080) == 0x0080);

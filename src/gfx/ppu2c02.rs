@@ -981,8 +981,8 @@ impl Ppu2c02Renderer
             
 
             screen_pixels: Box::new([0u8; SCREEN_ROWS * SCREEN_COLS * PIXEL_DEPTH]),
-            name_table: [Box::new([0u8; NAME_ROWS * NAME_COLS * PIXEL_DEPTH]),  Box::new([0u8; NAME_ROWS * NAME_COLS * PIXEL_DEPTH])],
-            pattern_table: [Box::new([0u8; PATTERN_ROWS * PATTERN_COLS * PIXEL_DEPTH]),  Box::new([0u8; PATTERN_ROWS * PATTERN_COLS * PIXEL_DEPTH])]
+            name_table: [Box::new([0u8; NAME_ROWS * NAME_COLS * PIXEL_DEPTH]), Box::new([0u8; NAME_ROWS * NAME_COLS * PIXEL_DEPTH])],
+            pattern_table: [Box::new([0u8; PATTERN_ROWS * PATTERN_COLS * PIXEL_DEPTH]), Box::new([0u8; PATTERN_ROWS * PATTERN_COLS * PIXEL_DEPTH])]
         };
 
         return ret;
@@ -993,7 +993,7 @@ impl Ppu2c02Renderer
     {
         canvas.set_sampler(Sampler::from(graphics::FilterMode::Nearest));
 
-        let screen_image = graphics::Image::from_pixels(ctx, self.screen_pixels.as_slice(), ImageFormat::Rgba8UnormSrgb, SCREEN_ROWS as u32, SCREEN_COLS as u32);
+        let screen_image = graphics::Image::from_pixels(ctx, self.screen_pixels.as_slice(), ImageFormat::Rgba8UnormSrgb, SCREEN_COLS as u32, SCREEN_ROWS as u32);
         let pattern0_image = graphics::Image::from_pixels(ctx, self.pattern_table[0].as_slice(),
             ImageFormat::Rgba8UnormSrgb, PATTERN_ROWS as u32, PATTERN_COLS as u32);
         let pattern1_image = graphics::Image::from_pixels(ctx, self.pattern_table[1].as_slice(),
