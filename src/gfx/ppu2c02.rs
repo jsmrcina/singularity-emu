@@ -395,7 +395,7 @@ impl ReadWrite for Ppu2c02
                 }
                 else
                 {
-                    self.tram_addr.set_field((self.tram_addr.get_field() & 0x00FF) | (data as u16));
+                    self.tram_addr.set_field((self.tram_addr.get_field() & 0xFF00) | (data as u16));
                     self.vram_addr.set_field(self.tram_addr.get_field());
                     self.address_latch = false;
                 }
@@ -404,8 +404,6 @@ impl ReadWrite for Ppu2c02
             // PPU Data
             0x0007 =>
             {
-                write!(&mut self.file, "Address: {:?}, Data: {:?}\n", self.vram_addr.get_field(), data);
-
                 self.ppu_write(self.vram_addr.get_field(), data);
                 if self.ctrl.increment_mode()
                 {
