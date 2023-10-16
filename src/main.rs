@@ -225,6 +225,12 @@ impl Clockable for MainState
             cpu.borrow_mut().clock_tick();
         }
 
+        if ppu.borrow().get_nmi()
+        {
+            ppu.borrow_mut().set_nmi(false);
+            cpu.borrow_mut().nmi();
+        }
+
         self.bus.borrow_mut().increment_clock_counter();
     }
 }

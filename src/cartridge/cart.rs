@@ -21,6 +21,15 @@ struct InesHeader
     _unused: [u8; 5]
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum MirrorMode
+{
+    Horizontal,
+    Vertical,
+    OneScreenLo,
+    OneScreenHi
+}
+
 impl InesHeader
 {
     pub fn new<R: Read>(mut reader: R) -> io::Result<Self>
@@ -60,6 +69,7 @@ pub struct Cart
     mapper_id: u8,
     prg_banks: u8,
     chr_banks: u8,
+    mirror_mode: MirrorMode,
     mapper: Option<Rc<RefCell<dyn MapperTrait>>>
 }
 
@@ -83,7 +93,8 @@ impl Cart
             mapper_id: ((header.mapper_1 >> 4) << 4) | (header.mapper_2 >> 4),
             prg_banks: 0,
             chr_banks: 0,
-            mapper: None
+            mapper: None,
+            mirror_mode: MirrorMode::Horizontal
         };
 
         let file_type: u8 = 1;
@@ -111,6 +122,12 @@ impl Cart
 
         return Ok(s);
     }
+
+    pub fn get_mirror_mode(&self) -> MirrorMode
+    {
+        return self.mirror_mode;
+    }
+
 }
 
 impl ReadWrite for Cart
