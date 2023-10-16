@@ -1,5 +1,6 @@
 use crate::traits::{ReadWrite, Clockable};
 use crate::cartridge::cart::Cart;
+use std::fmt;
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -1108,7 +1109,7 @@ impl Cpu6502
         while addr <= n_end as u32
         {
             line_addr = addr as u16;
-            let mut instruction: String = format!("${:04x}: ", addr);
+            let mut instruction: String = format!("{:04X}  ", addr);
             let mut opcode: u8 = 0;
             match &self.bus
             {
@@ -1119,92 +1120,121 @@ impl Cpu6502
                 None => panic!("Error, missing bus inside CPU")
             };
 
+            instruction += &String::from(format!("{:02X} ", opcode));
+
             addr += 1;
-            instruction += &self.ins[opcode as usize].name;
+            
 
             if self.ins[opcode as usize].addr_mode == Cpu6502::imp
             {
-                instruction += &String::from(" {IMP}");
+                instruction += &self.ins[opcode as usize].name;
             }
             else if self.ins[opcode as usize].addr_mode == Cpu6502::imm
             {
                 self.cpu_read(addr as u16, &mut value);
+                instruction += &String::from(format!("{:02X} ", value));
                 addr += 1;
-                instruction += &String::from(format!(" #${:02x} {{IMM}}", value));
+                instruction += &self.ins[opcode as usize].name;
+                instruction += &String::from(format!(" #${:02X}", value));
             }
             else if self.ins[opcode as usize].addr_mode == Cpu6502::zp0
             {
                 self.cpu_read(addr as u16, &mut lo);
+                instruction += &String::from(format!("{:02X} ", lo));
                 addr += 1;
-                instruction += &String::from(format!(" ${:02x} {{ZP0}}", lo));
+                instruction += &self.ins[opcode as usize].name;
+                instruction += &String::from(format!(" ${:02X}", lo));
             }
             else if self.ins[opcode as usize].addr_mode == Cpu6502::zpx
             {
                 self.cpu_read(addr as u16, &mut lo);
+                instruction += &String::from(format!("{:02X} ", lo));
                 addr += 1;
-                instruction += &String::from(format!(" ${:02x}, X {{ZPX}}", lo));
+                instruction += &self.ins[opcode as usize].name;
+                instruction += &String::from(format!(" ${:02X}, X", lo));
             }
             else if self.ins[opcode as usize].addr_mode == Cpu6502::zpy
             {
                 self.cpu_read(addr as u16, &mut lo);
+                instruction += &String::from(format!("{:02X} ", lo));
                 addr += 1;
-                instruction += &String::from(format!(" ${:02x}, Y {{ZPY}}", lo));
+                instruction += &self.ins[opcode as usize].name;
+                instruction += &String::from(format!(" ${:02X}, Y", lo));
             }
             else if self.ins[opcode as usize].addr_mode == Cpu6502::izx
             {
                 self.cpu_read(addr as u16, &mut lo);
+                instruction += &String::from(format!("{:02X} ", lo));
                 addr += 1;
-                instruction += &String::from(format!(" (${:02x}), X {{IZX}}", lo));
+                instruction += &self.ins[opcode as usize].name;
+                instruction += &String::from(format!(" (${:02X}), X", lo));
             }
             else if self.ins[opcode as usize].addr_mode == Cpu6502::izy
             {
                 self.cpu_read(addr as u16, &mut lo);
+                instruction += &String::from(format!("{:02X} ", lo));
                 addr += 1;
-                instruction += &String::from(format!(" (${:02x}), Y {{IZY}}", lo));
+                instruction += &self.ins[opcode as usize].name;
+                instruction += &String::from(format!(" (${:02X}), Y", lo));
             }
             else if self.ins[opcode as usize].addr_mode == Cpu6502::abs
             {
                 self.cpu_read(addr as u16, &mut lo);
+                instruction += &String::from(format!("{:02X} ", lo));
                 addr += 1;
                 self.cpu_read(addr as u16, &mut hi);
+                instruction += &String::from(format!("{:02X} ", hi));
                 addr += 1;
                 let cur_addr = ((hi as u16) << 8) | lo as u16;
-                instruction += &String::from(format!(" ${:04x} {{ABS}}", cur_addr));
+                instruction += &self.ins[opcode as usize].name;
+                instruction += &String::from(format!(" ${:04X}", cur_addr));
             }
             else if self.ins[opcode as usize].addr_mode == Cpu6502::abx
             {
                 self.cpu_read(addr as u16, &mut lo);
+                instruction += &String::from(format!("{:02X} ", lo));
                 addr += 1;
                 self.cpu_read(addr as u16, &mut hi);
+                instruction += &String::from(format!("{:02X} ", hi));
                 addr += 1;
                 let cur_addr = ((hi as u16) << 8) | lo as u16;
-                instruction += &String::from(format!(" ${:04x}, X {{ABX}}", cur_addr));
+                instruction += &self.ins[opcode as usize].name;
+                instruction += &String::from(format!(" ${:04X}, X", cur_addr));
             }
             else if self.ins[opcode as usize].addr_mode == Cpu6502::aby
             {
                 self.cpu_read(addr as u16, &mut lo);
+                instruction += &String::from(format!("{:02X} ", lo));
                 addr += 1;
                 self.cpu_read(addr as u16, &mut hi);
+                instruction += &String::from(format!("{:02X} ", hi));
                 addr += 1;
                 let cur_addr = ((hi as u16) << 8) | lo as u16;
-                instruction += &String::from(format!(" ${:04x}, Y {{ABY}}", cur_addr));
+                instruction += &self.ins[opcode as usize].name;
+                instruction += &String::from(format!(" ${:04X}, Y", cur_addr));
             }
             else if self.ins[opcode as usize].addr_mode == Cpu6502::ind
             {
                 self.cpu_read(addr as u16, &mut lo);
+                instruction += &String::from(format!("{:02X} ", lo));
                 addr += 1;
                 self.cpu_read(addr as u16, &mut hi);
+                instruction += &String::from(format!("{:02X} ", hi));
                 addr += 1;
                 let cur_addr = ((hi as u16) << 8) | lo as u16;
-                instruction += &String::from(format!(" (${:04x}) {{IND}}", cur_addr));
+                instruction += &self.ins[opcode as usize].name;
+                instruction += &String::from(format!(" (${:04X})", cur_addr));
             }
             else if self.ins[opcode as usize].addr_mode == Cpu6502::rel
             {
                 self.cpu_read(addr as u16, &mut value);
+                instruction += &String::from(format!("{:02X} ", value));
                 addr += 1;
-                instruction += &String::from(format!(" ${:02x} [${:04x}] {{REL}}", value, addr as i32 + (value as i8) as i32));
+                instruction += &self.ins[opcode as usize].name;
+                instruction += &String::from(format!(" ${:02X} [${:04X}]", value, addr as i32 + (value as i8) as i32));
             }
 
+            instruction += &String::from(format!(" {:?}", self));
             map.insert(line_addr, instruction);
         }
 
@@ -1219,7 +1249,9 @@ impl Cpu6502
         let mut hi: u8 = 0;
         self.cpu_read(self.addr_abs + 1, &mut hi);
     
-        self.pc = ((hi as u16) << 8) | lo as u16;
+        // self.pc = ((hi as u16) << 8) | lo as u16;
+
+        self.pc = 0xc000;
 
         self.a = 0;
         self.x = 0;
@@ -1288,6 +1320,14 @@ impl Cpu6502
 
 }
 
+impl fmt::Debug for Cpu6502
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
+    {
+        write!(f, "A: {}, X: {}, Y: {}, P: {}, SP: {:02X} ", self.a, self.x, self.y, self.status, self.stkp)
+    }
+}
+
 impl ReadWrite for Cpu6502
 {
     fn cpu_write(&mut self, address: u16, data: u8) -> bool
@@ -1332,9 +1372,18 @@ impl Clockable for Cpu6502
             // TODO: Why?
             self.set_flag(Flags6502::U, true);
 
-            self.pc += 1;
+            let result = self.disassemble(self.pc, self.pc);
+            let mut test_result_1: u8 = 0;
+            self.cpu_read(0x02, &mut test_result_1);
 
+            let mut test_result_2: u8 = 0;
+            self.cpu_read(0x03, &mut test_result_2);
+
+            
             self.cycles = self.ins[self.opcode as usize].cycles;
+
+            println!("{}", result.get(&self.pc).unwrap());
+            self.pc += 1;
             let additional_cycle1: u8 = (self.ins[self.opcode as usize].addr_mode)(self);
             let additional_cycle2: u8 = (self.ins[self.opcode as usize].op)(self);
 
