@@ -84,6 +84,7 @@ pub struct Ppu2c02
 {
     cartridge: Option<Rc<RefCell<Cart>>>,
     patterns: Box<[[u8; 4096]; 2]>,
+    nametables: Box<[[u8; 1024]; 2]>,
     palettes: [u8; 32],
     frame_complete: bool,
     scan_line: i32,
@@ -110,6 +111,7 @@ impl Ppu2c02
         {
             cartridge: None,
             patterns: Box::new([[0u8; 4096]; 2]),
+            nametables: Box::new([[0u8; 1024]; 2]),
             palettes: [0u8; 32],
             frame_complete: false,
             scan_line: 0,
@@ -330,6 +332,10 @@ impl Ppu2c02
         }
     }
 
+    pub fn get_name_table(&self) -> Box<[[u8; 1024]; 2]>
+    {
+        return self.nametables.clone();
+    }
 
 }
 
@@ -520,38 +526,38 @@ impl ReadWrite for Ppu2c02
                             {
                                 if mut_addr <= 0x03FF
                                 {
-                                    self.renderer.name_table[0][(mut_addr & 0x03FF) as usize] = data;
+                                    self.nametables[0][(mut_addr & 0x03FF) as usize] = data;
                                 }
                                 else if mut_addr >= 0x0400 && mut_addr <= 0x07FF
                                 {
-                                    self.renderer.name_table[1][(mut_addr & 0x03FF) as usize] = data;
+                                    self.nametables[1][(mut_addr & 0x03FF) as usize] = data;
                                 }
                                 else if mut_addr >= 0x0800 && mut_addr <= 0x0BFF
                                 {
-                                    self.renderer.name_table[0][(mut_addr & 0x03FF) as usize] = data;
+                                    self.nametables[0][(mut_addr & 0x03FF) as usize] = data;
                                 }
                                 else if mut_addr >= 0x0C00 && mut_addr <= 0x0FFF
                                 {
-                                    self.renderer.name_table[1][(mut_addr & 0x03FF) as usize] = data;
+                                    self.nametables[1][(mut_addr & 0x03FF) as usize] = data;
                                 }
                             },
                             MirrorMode::Horizontal =>
                             {
                                 if mut_addr <= 0x03FF
                                 {
-                                    self.renderer.name_table[0][(mut_addr & 0x03FF) as usize] = data;
+                                    self.nametables[0][(mut_addr & 0x03FF) as usize] = data;
                                 }
                                 else if mut_addr >= 0x0400 && mut_addr <= 0x07FF
                                 {
-                                    self.renderer.name_table[0][(mut_addr & 0x03FF) as usize] = data;
+                                    self.nametables[0][(mut_addr & 0x03FF) as usize] = data;
                                 }
                                 else if mut_addr >= 0x0800 && mut_addr <= 0x0BFF
                                 {
-                                    self.renderer.name_table[1][(mut_addr & 0x03FF) as usize] = data;
+                                    self.nametables[1][(mut_addr & 0x03FF) as usize] = data;
                                 }
                                 else if mut_addr >= 0x0C00 && mut_addr <= 0x0FFF
                                 {
-                                    self.renderer.name_table[1][(mut_addr & 0x03FF) as usize] = data;
+                                    self.nametables[1][(mut_addr & 0x03FF) as usize] = data;
                                 }
                             },
                             _ => panic!("Unimplemented mirror mode accessed")
@@ -623,38 +629,38 @@ impl ReadWrite for Ppu2c02
                             {
                                 if mut_addr <= 0x03FF
                                 {
-                                    *data = self.renderer.name_table[0][(mut_addr & 0x03FF) as usize];
+                                    *data = self.nametables[0][(mut_addr & 0x03FF) as usize];
                                 }
                                 else if mut_addr >= 0x0400 && mut_addr <= 0x07FF
                                 {
-                                    *data = self.renderer.name_table[1][(mut_addr & 0x03FF) as usize];
+                                    *data = self.nametables[1][(mut_addr & 0x03FF) as usize];
                                 }
                                 else if mut_addr >= 0x0800 && mut_addr <= 0x0BFF
                                 {
-                                    *data = self.renderer.name_table[0][(mut_addr & 0x03FF) as usize];
+                                    *data = self.nametables[0][(mut_addr & 0x03FF) as usize];
                                 }
                                 else if mut_addr >= 0x0C00 && mut_addr <= 0x0FFF
                                 {
-                                    *data = self.renderer.name_table[1][(mut_addr & 0x03FF) as usize];
+                                    *data = self.nametables[1][(mut_addr & 0x03FF) as usize];
                                 }
                             },
                             MirrorMode::Horizontal =>
                             {
                                 if mut_addr <= 0x03FF
                                 {
-                                    *data = self.renderer.name_table[0][(mut_addr & 0x03FF) as usize];
+                                    *data = self.nametables[0][(mut_addr & 0x03FF) as usize];
                                 }
                                 else if mut_addr >= 0x0400 && mut_addr <= 0x07FF
                                 {
-                                    *data = self.renderer.name_table[0][(mut_addr & 0x03FF) as usize];
+                                    *data = self.nametables[0][(mut_addr & 0x03FF) as usize];
                                 }
                                 else if mut_addr >= 0x0800 && mut_addr <= 0x0BFF
                                 {
-                                    *data = self.renderer.name_table[1][(mut_addr & 0x03FF) as usize];
+                                    *data = self.nametables[1][(mut_addr & 0x03FF) as usize];
                                 }
                                 else if mut_addr >= 0x0C00 && mut_addr <= 0x0FFF
                                 {
-                                    *data = self.renderer.name_table[1][(mut_addr & 0x03FF) as usize];
+                                    *data = self.nametables[1][(mut_addr & 0x03FF) as usize];
                                 }
                             },
                             _ => panic!("Unimplemented mirror mode accessed")
@@ -882,8 +888,6 @@ impl Clockable for Ppu2c02
 const PIXEL_DEPTH: usize = 4;
 const SCREEN_ROWS: usize = 240;
 const SCREEN_COLS: usize = 256;
-const NAME_ROWS: usize = 240;
-const NAME_COLS: usize = 256;
 const PATTERN_ROWS: usize = 128;
 const PATTERN_COLS: usize = 128;
 
@@ -897,7 +901,6 @@ pub struct Ppu2c02Renderer
 {
     pal_colors: Box<[graphics::Color; 0x40]>,
     screen_pixels: Box<[u8; SCREEN_ROWS * SCREEN_COLS * PIXEL_DEPTH]>,
-    name_table: [Box<[u8; NAME_ROWS * NAME_COLS * PIXEL_DEPTH]>; 2],
     pattern_table: [Box<[u8; PATTERN_ROWS * PATTERN_COLS * PIXEL_DEPTH]>; 2],
 }
 
@@ -979,9 +982,7 @@ impl Ppu2c02Renderer
                 graphics::Color::from_rgb(0, 0, 0),
             ]),
             
-
             screen_pixels: Box::new([0u8; SCREEN_ROWS * SCREEN_COLS * PIXEL_DEPTH]),
-            name_table: [Box::new([0u8; NAME_ROWS * NAME_COLS * PIXEL_DEPTH]), Box::new([0u8; NAME_ROWS * NAME_COLS * PIXEL_DEPTH])],
             pattern_table: [Box::new([0u8; PATTERN_ROWS * PATTERN_COLS * PIXEL_DEPTH]), Box::new([0u8; PATTERN_ROWS * PATTERN_COLS * PIXEL_DEPTH])]
         };
 
