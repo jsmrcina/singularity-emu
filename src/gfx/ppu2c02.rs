@@ -1,4 +1,4 @@
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, rc::Rc, fs::File, io::Write};
 
 use ggez::{graphics::{self, ImageFormat, Sampler}, Context};
 
@@ -100,7 +100,10 @@ pub struct Ppu2c02
     ppu_data_buffer: u8,
     nmi: bool,
     bg_next_info: BgNextTileInfo,
-    bg_shifter_info: BgShifterInfo
+    bg_shifter_info: BgShifterInfo,
+
+    // Debug
+    file: std::fs::File
 }
 
 impl Ppu2c02
@@ -127,7 +130,8 @@ impl Ppu2c02
             ppu_data_buffer: 0x00,
             nmi: false,
             bg_next_info: BgNextTileInfo { id: 0x00, attrib: 0x00, lsb: 0x00, msb: 0x00 },
-            bg_shifter_info: BgShifterInfo { pattern_lo: 0x0000, pattern_hi: 0x0000, attrib_lo: 0x0000, attrib_hi: 0x0000 }
+            bg_shifter_info: BgShifterInfo { pattern_lo: 0x0000, pattern_hi: 0x0000, attrib_lo: 0x0000, attrib_hi: 0x0000 },
+            file: File::create("output.txt").unwrap()
         };
 
         return s;
@@ -400,6 +404,8 @@ impl ReadWrite for Ppu2c02
             // PPU Data
             0x0007 =>
             {
+                write!(&mut self.file, "Address: {:?}, Data: {:?}\n", self.vram_addr.get_field(), data);
+
                 self.ppu_write(self.vram_addr.get_field(), data);
                 if self.ctrl.increment_mode()
                 {
