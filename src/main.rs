@@ -3,14 +3,14 @@ use cartridge::cart::Cart;
 use crate::cpu::cpu6502::Flags6502;
 use crate::traits::Clockable;
 
-use traits::{ReadWrite};
+use traits::ReadWrite;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::collections::BTreeMap;
 use std::ops::Bound;
 
 use ggez::event;
-use ggez::graphics::{self, GraphicsContext};
+use ggez::graphics::{self};
 use ggez::{Context, GameResult};
 use ggez::glam::*;
 use ggez::graphics::Text;
@@ -34,11 +34,11 @@ struct MainState
 
 impl MainState
 {
-    fn new(ctx: &Context) -> GameResult<MainState>
+    fn new() -> GameResult<MainState>
     {
         let mut s = MainState
         {
-            bus: Rc::new(RefCell::new(MainBus::new(ctx))),
+            bus: Rc::new(RefCell::new(MainBus::new())),
             map_asm: BTreeMap::new(),
             emulation_run: false,
             residual_time: 0.0,
@@ -77,26 +77,26 @@ impl MainState
     const OFFSET_X: f32 = 16.0;
     const OFFSET_Y: f32 = 14.0;
 
-    fn draw_cpu_ram(&mut self, x: i32, y: i32, mut n_addr: u16, n_rows: i32, n_cols: i32, canvas: &mut ggez::graphics::Canvas)
-    {
-        let n_cpu_ram_x: f32 = x as f32;
-        let mut n_cpu_ram_y: f32 = y as f32;
+    // fn draw_cpu_ram(&mut self, x: i32, y: i32, mut n_addr: u16, n_rows: i32, n_cols: i32, canvas: &mut ggez::graphics::Canvas)
+    // {
+    //     let n_cpu_ram_x: f32 = x as f32;
+    //     let mut n_cpu_ram_y: f32 = y as f32;
 
-        for _ in 0..n_rows
-        {
-            let mut s_offset: String = format!("${:04x}:", n_addr);
-            for _ in 0..n_cols
-            {
-                let mut data: u8 = 0;
-                self.bus.borrow_mut().cpu_read(n_addr, &mut data);
-                s_offset = s_offset + &format!(" {:02x}", data);
-                n_addr = n_addr + 1;
-            }
-            let text = Text::new(s_offset);
-            canvas.draw(&text, Vec2::new(n_cpu_ram_x, n_cpu_ram_y));
-            n_cpu_ram_y = n_cpu_ram_y + MainState::OFFSET_Y;
-        }
-    }
+    //     for _ in 0..n_rows
+    //     {
+    //         let mut s_offset: String = format!("${:04x}:", n_addr);
+    //         for _ in 0..n_cols
+    //         {
+    //             let mut data: u8 = 0;
+    //             self.bus.borrow_mut().cpu_read(n_addr, &mut data);
+    //             s_offset = s_offset + &format!(" {:02x}", data);
+    //             n_addr = n_addr + 1;
+    //         }
+    //         let text = Text::new(s_offset);
+    //         canvas.draw(&text, Vec2::new(n_cpu_ram_x, n_cpu_ram_y));
+    //         n_cpu_ram_y = n_cpu_ram_y + MainState::OFFSET_Y;
+    //     }
+    // }
 
     fn draw_cpu(&mut self, x: f32, y: f32, canvas: &mut ggez::graphics::Canvas)
     {
@@ -359,6 +359,6 @@ fn main() -> GameResult
         .window_setup(ggez::conf::WindowSetup::default().title("Singularity Emu"))
         .window_mode(ggez::conf::WindowMode::default().dimensions(1280.0, 1024.0))
         .build()?;
-    let state = MainState::new(&ctx)?;
+    let state = MainState::new()?;
     event::run(ctx, event_loop, state);
 }

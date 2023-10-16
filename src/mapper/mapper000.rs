@@ -3,7 +3,7 @@ use crate::traits::MapperTrait;
 pub struct Mapper000
 {
     prg_banks: u8,
-    chr_banks: u8
+    _chr_banks: u8
 }
 
 impl Mapper000
@@ -12,7 +12,7 @@ impl Mapper000
     {
         Mapper000 {
             prg_banks: prg_banks,
-            chr_banks: chr_banks
+            _chr_banks: chr_banks
         }
     }
 }

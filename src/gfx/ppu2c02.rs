@@ -1,4 +1,4 @@
-use std::{cell::RefCell, rc::Rc, fs::File, io::Write};
+use std::{cell::RefCell, rc::Rc};
 
 use ggez::{graphics::{self, ImageFormat, Sampler}, Context};
 
@@ -83,7 +83,6 @@ struct BgShifterInfo
 pub struct Ppu2c02
 {
     cartridge: Option<Rc<RefCell<Cart>>>,
-    nametables: Box<[[u8; 1024]; 2]>,
     patterns: Box<[[u8; 4096]; 2]>,
     palettes: [u8; 32],
     frame_complete: bool,
@@ -100,26 +99,22 @@ pub struct Ppu2c02
     ppu_data_buffer: u8,
     nmi: bool,
     bg_next_info: BgNextTileInfo,
-    bg_shifter_info: BgShifterInfo,
-
-    // Debug
-    file: std::fs::File
+    bg_shifter_info: BgShifterInfo
 }
 
 impl Ppu2c02
 {
-    pub fn new(ctx: &Context) -> Self
+    pub fn new() -> Self
     {
         let s = Ppu2c02
         {
             cartridge: None,
-            nametables: Box::new([[0u8; 1024]; 2]),
             patterns: Box::new([[0u8; 4096]; 2]),
             palettes: [0u8; 32],
             frame_complete: false,
             scan_line: 0,
             cycle: 0,
-            renderer: Ppu2c02Renderer::new(ctx),
+            renderer: Ppu2c02Renderer::new(),
             status: StatusRegister(0),
             mask: MaskRegister(0),
             ctrl: CtrlRegister(0),
@@ -130,8 +125,7 @@ impl Ppu2c02
             ppu_data_buffer: 0x00,
             nmi: false,
             bg_next_info: BgNextTileInfo { id: 0x00, attrib: 0x00, lsb: 0x00, msb: 0x00 },
-            bg_shifter_info: BgShifterInfo { pattern_lo: 0x0000, pattern_hi: 0x0000, attrib_lo: 0x0000, attrib_hi: 0x0000 },
-            file: File::create("output.txt").unwrap()
+            bg_shifter_info: BgShifterInfo { pattern_lo: 0x0000, pattern_hi: 0x0000, attrib_lo: 0x0000, attrib_hi: 0x0000 }
         };
 
         return s;
@@ -508,7 +502,7 @@ impl ReadWrite for Ppu2c02
             {
                 // Calculate the pattern half index (0 or 1 depending on whether the MSB is set or not)
                 let pattern_half_index = (mut_addr & 0x1000) >> 12;
-                let pattern_index = (mut_addr & 0x0FFF); 
+                let pattern_index = mut_addr & 0x0FFF; 
                 self.patterns[pattern_half_index as usize][pattern_index as usize] = data;
             }
             else if mut_addr >= 0x2000 && mut_addr < 0x3EFF
@@ -611,7 +605,7 @@ impl ReadWrite for Ppu2c02
 
                 // Calculate the pattern half index (0 or 1 depending on whether its the first 4k or not)
                 let pattern_half_index = (mut_addr & 0x1000) >> 12;
-                let pattern_index = (mut_addr & 0x0FFF); 
+                let pattern_index = mut_addr & 0x0FFF; 
                 *data = self.patterns[pattern_half_index as usize][pattern_index as usize];
             }
             else if mut_addr >= 0x2000 && mut_addr < 0x3EFF
@@ -710,6 +704,11 @@ impl Clockable for Ppu2c02
         // at what scanelines and cycles: https://www.nesdev.org/wiki/PPU_rendering
         if self.scan_line >= -1 && self.scan_line < 240
         {
+            if self.scan_line == 0 && self.cycle == 0
+            {
+                self.cycle = 1;
+            }
+
             if self.scan_line == -1 && self.cycle == 1
             {
                 self.status.set_vertical_blank(false);
@@ -737,18 +736,18 @@ impl Clockable for Ppu2c02
                         let mut attrib: u8 = 0;
                         let addr: u16 = 0x23C0 | ((self.vram_addr.name_table_y() as u16) << 11)
                             | ((self.vram_addr.name_table_x() as u16) << 10)
-                            | ((self.vram_addr.coarse_y() >> 2) << 3)
-                            | (self.vram_addr.coarse_x() >> 2);
+                            | (((self.vram_addr.coarse_y() >> 2) << 3)
+                            | (self.vram_addr.coarse_x() >> 2));
 
                         self.ppu_read(addr, &mut attrib);
 
                         self.bg_next_info.attrib = attrib;
 
-                        if self.vram_addr.coarse_y() & 0x02 == 0x02
+                        if self.vram_addr.coarse_y() & 0x02 > 0
                         {
                             self.bg_next_info.attrib >>= 4;
                         }
-                        if self.vram_addr.coarse_x() & 0x02 == 0x02
+                        if self.vram_addr.coarse_x() & 0x02 > 0
                         {
                             self.bg_next_info.attrib >>= 2;
                         }
@@ -787,7 +786,16 @@ impl Clockable for Ppu2c02
 
             if self.cycle == 257
             {
+                self.load_background_shifters();
                 self.transfer_address_x();
+            }
+
+            // These are superfluous, but technically in the implementation
+            if self.cycle == 338 || self.cycle == 340
+            {
+                let mut id = 0;
+                self.ppu_read(0x2000 | (self.vram_addr.get_field() & 0x0FFF), &mut id);
+                self.bg_next_info.id = id;
             }
 
             if self.scan_line == -1 && self.cycle >= 280 && self.cycle < 305
@@ -801,12 +809,15 @@ impl Clockable for Ppu2c02
             // Nothing happens
         }
 
-        if self.scan_line == 241 && self.cycle == 1
+        if self.scan_line >= 241 && self.scan_line < 261
         {
-            self.status.set_vertical_blank(true);
-            if self.ctrl.enable_nmi()
+            if self.scan_line == 241 && self.cycle == 1
             {
-                self.nmi = true;
+                self.status.set_vertical_blank(true);
+                if self.ctrl.enable_nmi()
+                {
+                    self.nmi = true;
+                }
             }
         }
 
@@ -869,17 +880,16 @@ impl Clockable for Ppu2c02
 }
 
 const PIXEL_DEPTH: usize = 4;
-const SCREEN_ROWS: usize = 256;
-const SCREEN_COLS: usize = 240;
-const NAME_ROWS: usize = 256;
-const NAME_COLS: usize = 240;
+const SCREEN_ROWS: usize = 240;
+const SCREEN_COLS: usize = 256;
+const NAME_ROWS: usize = 240;
+const NAME_COLS: usize = 256;
 const PATTERN_ROWS: usize = 128;
 const PATTERN_COLS: usize = 128;
 
 enum Surface
 {
     Screen,
-    Name,
     Pattern
 }
 
@@ -893,9 +903,9 @@ pub struct Ppu2c02Renderer
 
 impl Ppu2c02Renderer
 {
-    pub fn new(ctx: &Context) -> Self
+    pub fn new() -> Self
     {
-        let mut ret = Ppu2c02Renderer
+        let ret = Ppu2c02Renderer
         {
             // Colors taken from NESDev wiki:
             // https://www.nesdev.org/wiki/PPU_palettes
@@ -989,12 +999,6 @@ impl Ppu2c02Renderer
         let pattern1_image = graphics::Image::from_pixels(ctx, self.pattern_table[1].as_slice(),
             ImageFormat::Rgba8UnormSrgb, PATTERN_ROWS as u32, PATTERN_COLS as u32);
 
-        // TODO
-        let nametable0_image = graphics::Image::from_pixels(ctx, self.name_table[0].as_slice(),
-            ImageFormat::Rgba8UnormSrgb, NAME_ROWS as u32, NAME_COLS as u32);
-        let nametable1_image = graphics::Image::from_pixels(ctx, self.name_table[1].as_slice(),
-            ImageFormat::Rgba8UnormSrgb, NAME_ROWS as u32, NAME_COLS as u32);
-
         let screen_params = graphics::DrawParam::new()
             .dest(Vec2::new(0.0, 0.0))
             .scale(Vec2::new(2.0, 2.0));
@@ -1012,6 +1016,8 @@ impl Ppu2c02Renderer
         pattern1_image.draw(canvas, pattern1_params);
     }
 
+    // Row = scanline
+    // Col = cycle
     fn set_pixel_to_color(&mut self, surface_id: Surface, surface_index: usize, color: graphics::Color, row: i32, col: i32)
     {
         match surface_id
@@ -1029,21 +1035,6 @@ impl Ppu2c02Renderer
                 self.screen_pixels[start_index + 1] = color.to_rgba().1;
                 self.screen_pixels[start_index + 2] = color.to_rgba().2;
                 self.screen_pixels[start_index + 3] = 255; // No alpha blending, always opaque
-            },
-
-            Surface::Name =>
-            {
-                if row < 0 || row >= NAME_ROWS as i32 || col < 0 || col >= NAME_COLS as i32
-                {
-                    // Do nothing
-                    return;
-                }
-
-                let start_index = (row as usize * NAME_COLS * PIXEL_DEPTH) + (col as usize * PIXEL_DEPTH);
-                self.name_table[surface_index][start_index + 0] = color.to_rgba().0;
-                self.name_table[surface_index][start_index + 1] = color.to_rgba().1;
-                self.name_table[surface_index][start_index + 2] = color.to_rgba().2;
-                self.name_table[surface_index][start_index + 3] = 255; // No alpha blending, always opaque
             },
 
             Surface::Pattern => 

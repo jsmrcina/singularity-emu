@@ -1,6 +1,5 @@
 use std::rc::Rc;
 use std::cell::RefCell;
-use ggez::Context;
 
 use crate::traits::ReadWrite;
 
@@ -24,14 +23,14 @@ pub struct MainBus
 
 impl MainBus
 {
-    pub fn new(ctx: &Context) -> Self
+    pub fn new() -> Self
     {
         let mut s = MainBus
         {
             bus_systems: BusSystems::new(),
             cpu_ram: Rc::new(RefCell::new(Ram::new(0x1FFF, 0x07FF))),
             cpu: Rc::new(RefCell::new(Cpu6502::new())),
-            ppu: Rc::new(RefCell::new(Ppu2c02::new(ctx))),
+            ppu: Rc::new(RefCell::new(Ppu2c02::new())),
             cartridge: None,
             system_clock_counter: 0
         };
@@ -88,11 +87,11 @@ impl ReadWrite for MainBus
     {
         let matching_systems = self.bus_systems.get_matching_systems(address);
 
-        let mut handled: bool = false;
+        let mut _handled: bool = false;
         for system in matching_systems
         {
-            handled = system.sys.borrow_mut().cpu_write(address, data);
-            if handled
+            _handled = system.sys.borrow_mut().cpu_write(address, data);
+            if _handled
             {
                 break;
             }
