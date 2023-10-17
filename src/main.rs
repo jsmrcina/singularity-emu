@@ -3,7 +3,6 @@ use cartridge::cart::Cart;
 use crate::cpu::cpu6502::Flags6502;
 use crate::traits::Clockable;
 
-use traits::ReadWrite;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::collections::BTreeMap;
@@ -47,7 +46,8 @@ impl MainState
 
         // Link the CPU to the BUS
         // TODO: Better to move this?
-        let bus_trait_object = Rc::clone(&s.bus) as Rc<RefCell<dyn ReadWrite>>;
+        // TODO: Revert back to using the trait once CPU is debugged
+        let bus_trait_object = Rc::clone(&s.bus);// as Rc<RefCell<dyn ReadWrite>>;
         s.bus.borrow_mut().get_cpu().borrow_mut().set_bus(Some(bus_trait_object));
 
         let cart = Cart::new("data\\nestest.nes".to_string());

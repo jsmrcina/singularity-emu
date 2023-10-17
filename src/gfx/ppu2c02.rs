@@ -158,6 +158,16 @@ impl Ppu2c02
         self.nmi = nmi
     }
 
+    pub fn get_cycle(&self) -> i32
+    {
+        return self.cycle;
+    }
+
+    pub fn get_scan_line(&self) -> i32
+    {
+        return self.scan_line;
+    }
+
     pub fn render(&mut self, ctx: &mut Context, canvas: &mut ggez::graphics::Canvas, palette_id: u8)
     {
         self.prepare_pattern_table(0, palette_id);
