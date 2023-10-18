@@ -347,6 +347,23 @@ impl Ppu2c02
         return self.nametables.clone();
     }
 
+    pub fn reset(&mut self)
+    {
+        self.ctrl.set_field(0);
+        self.mask.set_field(0);
+        self.status.set_field(self.status.get_field() & 0x80); // Keep top bit set
+        self.address_latch = false;
+        self.ppu_data_buffer = 0;
+        self.frame_complete = false;
+        self.scan_line = 0;
+        self.cycle = 0;
+        self.fine_x = 0;
+        self.bg_next_info = BgNextTileInfo { attrib: 0, id: 0, lsb: 0, msb: 0 };
+        self.bg_shifter_info = BgShifterInfo { attrib_hi: 0, attrib_lo: 0, pattern_hi: 0, pattern_lo: 0 };
+        self.vram_addr.set_field(0);
+        self.tram_addr.set_field(0);
+    }
+
 }
 
 impl ReadWrite for Ppu2c02

@@ -207,6 +207,10 @@ impl MainState
         // Reset the CPU
         let cpu = self.bus.borrow_mut().get_cpu();
         cpu.borrow_mut().reset();
+
+        // Reset the PPU
+        let ppu = self.bus.borrow_mut().get_ppu();
+        ppu.borrow_mut().reset();
     }
 
 }
