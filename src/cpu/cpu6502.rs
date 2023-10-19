@@ -1132,15 +1132,6 @@ impl Cpu6502
             {
                 instruction += &String::from("       ");
                 instruction += &self.ins[opcode as usize].name;
-
-                if self.ins[opcode as usize].name.len() == 3
-                {
-                    instruction += &String::from("                            ");
-                }
-                else
-                {
-                    instruction += &String::from("                          ");
-                }
             }
             else if self.ins[opcode as usize].addr_mode == Cpu6502::imm
             {
@@ -1148,7 +1139,7 @@ impl Cpu6502
                 instruction += &String::from(format!("{:02X}     ", value));
                 addr += 1;
                 instruction += &self.ins[opcode as usize].name;
-                instruction += &String::from(format!(" #${:02X}                       ", value));
+                instruction += &String::from(format!(" #${:02X}", value));
             }
             else if self.ins[opcode as usize].addr_mode == Cpu6502::zp0
             {
@@ -1159,7 +1150,7 @@ impl Cpu6502
 
                 let mut temp = 0;
                 self.cpu_read((lo as u16) & 0x00FF, &mut temp);
-                instruction += &String::from(format!(" ${:02X} = {:02X}                   ", lo, temp));
+                instruction += &String::from(format!(" ${:02X} = {:02X}", lo, temp));
             }
             else if self.ins[opcode as usize].addr_mode == Cpu6502::zpx
             {
@@ -1193,7 +1184,7 @@ impl Cpu6502
                 let mut ind_data: u8 = 0;
                 self.cpu_read(ind_addr, &mut ind_data);
 
-                instruction += &String::from(format!(" (${:02X},X) @ {:02X} = {:04X} = {:02X}   ", ind, ind + self.x as u16, ind_addr, ind_data));
+                instruction += &String::from(format!(" (${:02X},X) @ {:02X} = {:04X} = {:02X}", ind, ind + self.x as u16, ind_addr, ind_data));
             }
             else if self.ins[opcode as usize].addr_mode == Cpu6502::izy
             {
@@ -1212,7 +1203,7 @@ impl Cpu6502
 
                 let mut ind_data: u8 = 0;
                 self.cpu_read(ind_addr_y, &mut ind_data);
-                instruction += &String::from(format!(" (${:02X}),Y = {:04X} @ {:04X} = {:02X} ", ind, ind_addr, ind_addr_y, ind_data));
+                instruction += &String::from(format!(" (${:02X}),Y = {:04X} @ {:04X} = {:02X}", ind, ind_addr, ind_addr_y, ind_data));
             }
             else if self.ins[opcode as usize].addr_mode == Cpu6502::abs
             {
@@ -1229,13 +1220,13 @@ impl Cpu6502
                     self.ins[opcode as usize].name.eq("JSR")
                     
                 {
-                    instruction += &String::from(format!(" ${:04X}                      ", cur_addr));
+                    instruction += &String::from(format!(" ${:04X}", cur_addr));
                 }
                 else
                 {
                     let mut temp = 0;
                     self.cpu_read(cur_addr, &mut temp);
-                    instruction += &String::from(format!(" ${:04X} = {:02X}                 ", cur_addr, temp));
+                    instruction += &String::from(format!(" ${:04X} = {:02X}", cur_addr, temp));
                 }
             }
             else if self.ins[opcode as usize].addr_mode == Cpu6502::abx
@@ -1248,7 +1239,7 @@ impl Cpu6502
                 addr += 1;
                 let cur_addr = ((hi as u16) << 8) | lo as u16;
                 instruction += &self.ins[opcode as usize].name;
-                instruction += &String::from(format!(" ${:04X}                      ", cur_addr));
+                instruction += &String::from(format!(" ${:04X}", cur_addr));
             }
             else if self.ins[opcode as usize].addr_mode == Cpu6502::aby
             {
@@ -1260,7 +1251,22 @@ impl Cpu6502
                 addr += 1;
                 let cur_addr = ((hi as u16) << 8) | lo as u16;
                 instruction += &self.ins[opcode as usize].name;
-                instruction += &String::from(format!(" ${:04X}                      ", cur_addr));
+
+        
+                let data: u16;
+                self.cpu_read(addr as u16, &mut lo);
+                addr += 1;
+                self.cpu_read(addr as u16, &mut hi);
+                addr += 1;
+                data = ((hi as u16) << 8) | (lo as u16);
+
+                let mut added_addr: u16 = data;
+                added_addr = added_addr.wrapping_add(self.y as u16);
+
+                let mut value = 0;
+                self.cpu_read(addr as u16, &mut value);
+
+                instruction += &String::from(format!(" ${:04X},Y @ {:04X} = {:02X}", cur_addr, added_addr, value));
             }
             else if self.ins[opcode as usize].addr_mode == Cpu6502::ind
             {
@@ -1273,10 +1279,28 @@ impl Cpu6502
                 let cur_addr = ((hi as u16) << 8) | lo as u16;
                 instruction += &self.ins[opcode as usize].name;
 
-                self.cpu_read((cur_addr) & 0x00FF, &mut lo);
-                self.cpu_read((cur_addr + 1) & 0x00FF, &mut hi);
+                let ptr: u16;
+                self.cpu_read(self.pc, &mut lo);
+                self.cpu_read(self.pc + 1, &mut hi);
+                ptr = ((hi as u16) << 8) | (lo as u16);
+        
+                let offset_addr;
+                if lo == 0x00FF
+                {
+                    self.cpu_read(ptr, &mut lo);
+                    self.cpu_read(ptr & 0xFF00, &mut hi);
+        
+                    offset_addr = ((hi as u16) << 8) | lo as u16;
+                }
+                else
+                {
+                    self.cpu_read(ptr, &mut lo);
+                    self.cpu_read(ptr + 1, &mut hi);
+        
+                    offset_addr = ((hi as u16) << 8) | lo as u16;
+                }
 
-                instruction += &String::from(format!(" (${:04X}) = {:04X}             ", cur_addr, (((hi as u16) << 8) | lo as u16)));
+                instruction += &String::from(format!(" (${:04X}) = {:04X}", cur_addr, offset_addr));
             }
             else if self.ins[opcode as usize].addr_mode == Cpu6502::rel
             {
@@ -1284,8 +1308,13 @@ impl Cpu6502
                 instruction += &String::from(format!("{:02X}     ", value));
                 addr += 1;
                 instruction += &self.ins[opcode as usize].name;
-                instruction += &String::from(format!(" ${:04X}                      ", addr as i32 + (value as i8) as i32));
+                instruction += &String::from(format!(" ${:04X}", addr as i32 + (value as i8) as i32));
             }
+
+            // Pad to 49 characters
+            let pad = 47 - instruction.len();
+            let repeated_blanks = ' '.to_string().repeat(pad);
+            instruction += &repeated_blanks;
 
             instruction += &String::from(format!(" {:?}", self));
             map.insert(line_addr, instruction);

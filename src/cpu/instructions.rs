@@ -265,7 +265,7 @@ macro_rules! create_instruction_array {
         Instruction { name: String::from("???"), op: Cpu6502::xxx, addr_mode: Cpu6502::imp, cycles: 5 },
         Instruction { name: String::from("INX"), op: Cpu6502::inx, addr_mode: Cpu6502::imp, cycles: 2 },
         Instruction { name: String::from("SBC"), op: Cpu6502::sbc, addr_mode: Cpu6502::imm, cycles: 2 },
-        Instruction { name: String::from("*NOP"), op: Cpu6502::nop, addr_mode: Cpu6502::imp, cycles: 2 },
+        Instruction { name: String::from("NOP"), op: Cpu6502::nop, addr_mode: Cpu6502::imp, cycles: 2 },
         Instruction { name: String::from("???"), op: Cpu6502::sbc, addr_mode: Cpu6502::imp, cycles: 2 },
         Instruction { name: String::from("CPX"), op: Cpu6502::cpx, addr_mode: Cpu6502::abs, cycles: 4 },
         Instruction { name: String::from("SBC"), op: Cpu6502::sbc, addr_mode: Cpu6502::abs, cycles: 4 },
