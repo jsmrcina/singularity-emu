@@ -10,6 +10,8 @@ use crate::cartridge::cart::Cart;
 
 use crate::bus::bus_systems::BusSystems;
 
+use crate::input::controller::NesController;
+
 
 pub struct MainBus
 {
@@ -18,6 +20,7 @@ pub struct MainBus
     ppu: Rc<RefCell<Ppu2c02>>,
     cpu: Rc<RefCell<Cpu6502>>,
     cartridge: Option<Rc<RefCell<Cart>>>,
+    controllers: [Rc<RefCell<NesController>>; 2],
     system_clock_counter: u32
 }
 
@@ -32,6 +35,7 @@ impl MainBus
             cpu: Rc::new(RefCell::new(Cpu6502::new())),
             ppu: Rc::new(RefCell::new(Ppu2c02::new())),
             cartridge: None,
+            controllers: [ Rc::new(RefCell::new(NesController::new())), Rc::new(RefCell::new(NesController::new())) ],
             system_clock_counter: 0
         };
 
@@ -40,6 +44,12 @@ impl MainBus
 
         let ppu_trait_object = Rc::clone(&s.ppu) as Rc<RefCell<dyn ReadWrite>>;
         s.bus_systems.add_system((0x2000, 0x3FFF), "PPU_RAM".to_string(), 1, ppu_trait_object);
+
+        let controller_1_trait_object = Rc::clone(&s.controllers[0]) as Rc<RefCell<dyn ReadWrite>>;
+        s.bus_systems.add_system((0x4016, 0x4016), "CONTROLLER_1".to_string(), 1, controller_1_trait_object);
+
+        let controller_2_trait_object = Rc::clone(&s.controllers[1]) as Rc<RefCell<dyn ReadWrite>>;
+        s.bus_systems.add_system((0x4017, 0x4017), "CONTROLLER_2".to_string(), 1, controller_2_trait_object);
 
         return s;
     }
@@ -67,6 +77,11 @@ impl MainBus
     pub fn get_clock_counter(&self) -> u32
     {
         return self.system_clock_counter;
+    }
+
+    pub fn get_controller(&mut self, index: usize) -> Rc<RefCell<NesController>>
+    {
+        return Rc::clone(&self.controllers[index]);
     }
 
     pub fn increment_clock_counter(&mut self)

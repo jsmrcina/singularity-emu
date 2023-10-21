@@ -1,5 +1,6 @@
 use bus::main_bus::MainBus;
 use cartridge::cart::Cart;
+use input::controller::NesKey;
 use crate::cpu::cpu6502::Flags6502;
 use crate::traits::Clockable;
 
@@ -21,6 +22,7 @@ pub mod cpu;
 pub mod mapper;
 pub mod gfx;
 pub mod cartridge;
+pub mod input;
 
 struct MainState
 {
@@ -50,7 +52,7 @@ impl MainState
         let bus_trait_object = Rc::clone(&s.bus);// as Rc<RefCell<dyn ReadWrite>>;
         s.bus.borrow_mut().get_cpu().borrow_mut().set_bus(Some(bus_trait_object));
 
-        let cart = Cart::new("data\\super mario.nes".to_string());
+        let cart = Cart::new("data\\nestest.nes".to_string());
         match cart
         {
             Ok(x) =>
@@ -213,6 +215,53 @@ impl MainState
         ppu.borrow_mut().reset();
     }
 
+    fn process_controller_input(&mut self, ctx: &mut Context)
+    {
+        let mut bus = self.bus.borrow_mut();
+        bus.get_controller(0).borrow_mut().clear_live_state();
+        
+        if ctx.keyboard.is_key_just_pressed(ggez::input::keyboard::KeyCode::X)
+        {
+            bus.get_controller(0).borrow_mut().set_live_state_bit(NesKey::A);
+        }
+
+        if ctx.keyboard.is_key_just_pressed(ggez::input::keyboard::KeyCode::Z)
+        {
+            bus.get_controller(0).borrow_mut().set_live_state_bit(NesKey::B);
+        }
+
+        if ctx.keyboard.is_key_just_pressed(ggez::input::keyboard::KeyCode::A)
+        {
+            bus.get_controller(0).borrow_mut().set_live_state_bit(NesKey::START);
+        }
+
+        if ctx.keyboard.is_key_just_pressed(ggez::input::keyboard::KeyCode::S)
+        {
+            bus.get_controller(0).borrow_mut().set_live_state_bit(NesKey::SELECT);
+        }
+
+        if ctx.keyboard.is_key_just_pressed(ggez::input::keyboard::KeyCode::Up)
+        {
+            bus.get_controller(0).borrow_mut().set_live_state_bit(NesKey::UP);
+        }
+
+        if ctx.keyboard.is_key_just_pressed(ggez::input::keyboard::KeyCode::Down)
+        {
+            println!("down");
+            bus.get_controller(0).borrow_mut().set_live_state_bit(NesKey::DOWN);
+        }
+
+        if ctx.keyboard.is_key_just_pressed(ggez::input::keyboard::KeyCode::Left)
+        {
+            bus.get_controller(0).borrow_mut().set_live_state_bit(NesKey::LEFT);
+        }
+
+        if ctx.keyboard.is_key_just_pressed(ggez::input::keyboard::KeyCode::Right)
+        {
+            bus.get_controller(0).borrow_mut().set_live_state_bit(NesKey::RIGHT);
+        }
+    }
+
 }
 
 impl Clockable for MainState
@@ -333,6 +382,8 @@ impl event::EventHandler<ggez::GameError> for MainState
             self.selected_palette += 1;
             self.selected_palette %= 7;
         }
+
+        self.process_controller_input(ctx);
         
         Ok(())
     }
