@@ -655,7 +655,7 @@ impl Cpu6502
     pub fn inc(&mut self) -> u8 
     {
         self.fetch();
-        let temp: u16 = (self.fetched_data as u16).overflowing_add(1).0;
+        let temp: u16 = (self.fetched_data as u16).wrapping_add(1);
         self.cpu_write(self.addr_abs, (temp & 0x00FF) as u8);
         self.set_flag(Flags6502::Z, (temp & 0x00FF) == 0x0000);
         self.set_flag(Flags6502::N, (temp & 0x0080) == 0x0080);
@@ -666,7 +666,7 @@ impl Cpu6502
     // Function: X = X + 1
     pub fn inx(&mut self) -> u8 
     {
-        self.x = self.x.overflowing_add(1).0;
+        self.x = self.x.wrapping_add(1);
         self.set_flag(Flags6502::Z, self.x == 0x00);
         self.set_flag(Flags6502::N, (self.x & 0x80) == 0x80);
         return 0;
@@ -676,7 +676,7 @@ impl Cpu6502
     // Function: Y = Y + 1
     pub fn iny(&mut self) -> u8 
     {
-        self.y = self.y.overflowing_add(1).0;
+        self.y = self.y.wrapping_add(1);
         self.set_flag(Flags6502::Z, self.y == 0x00);
         self.set_flag(Flags6502::N, (self.y & 0x80) == 0x80);
         return 0;
@@ -830,6 +830,7 @@ impl Cpu6502
         self.status = result;
         
         self.set_flag(Flags6502::U, true);
+        self.set_flag(Flags6502::B, false);
         return 0;
     }
 
@@ -1063,12 +1064,6 @@ impl Cpu6502
         return 0;
     }
 
-    // This function captures illegal opcodes
-    pub fn xxx(&mut self) -> u8 
-    {
-        return 0;
-    }
-
     // The following are unofficial opcodes but are tested by nestest.rom
     pub fn lax(&mut self) -> u8
     {
@@ -1105,6 +1100,153 @@ impl Cpu6502
         self.set_flag(Flags6502::Z, (temp & 0x00FF) == 0x0000);
         self.set_flag(Flags6502::N, temp & 0x0080 == 0x0080);
         return 0;
+    }
+
+    // Also called ins or isc
+    pub fn isb(&mut self) -> u8
+    {
+        self.fetch();
+        let mut temp: u16 = (self.fetched_data as u16).wrapping_add(1);
+        self.cpu_write(self.addr_abs, (temp & 0x00FF) as u8);
+        
+        // This is an inversion of the bits. Once we invert, the logic just becomes adc()
+        let value: u16 = temp ^ 0x00FF;
+
+        // This logic is taken from adc()   
+        temp = self.a as u16 + value + self.get_flag(Flags6502::C) as u16;
+
+        // If we overflow into 16-bit range, set the carry bit
+        self.set_flag(Flags6502::C, temp > 255);
+        self.set_flag(Flags6502::Z, (temp & 0x00FF) == 0);
+
+        let v: u16 = (temp ^ self.a as u16) & (temp ^ value) & 0x0080;
+        self.set_flag(Flags6502::V, v != 0);
+        self.set_flag(Flags6502::N, temp & 0x80 == 0x80);
+
+        // Load the result into the accumulator
+        self.a = (temp & 0x00FF) as u8;
+
+        return 0;
+    }
+
+    pub fn slo(&mut self) -> u8
+    {
+        self.fetch();
+        let temp: u16 = (self.fetched_data as u16) << 1;
+        self.set_flag(Flags6502::C, (temp & 0xFF00) > 0); // Carry
+
+        self.a = self.a | (temp as u8);
+        self.set_flag(Flags6502::Z, self.a == 0x00); // Zero
+        self.set_flag(Flags6502::N, self.a & 0x80 == 0x80); // Negative
+        self.cpu_write(self.addr_abs, (temp & 0x00FF) as u8);
+
+        return 0;
+    }
+
+    pub fn rla(&mut self) -> u8
+    {
+        self.fetch();
+        let temp: u16 = ((self.fetched_data as u16) << 1) | self.get_flag(Flags6502::C) as u16;
+        self.set_flag(Flags6502::C, temp & 0xFF00 > 0); // Carry
+
+        self.a = self.a & (temp as u8);
+        self.set_flag(Flags6502::Z, self.a == 0x00); // Zero
+        self.set_flag(Flags6502::N, self.a & 0x80 == 0x80); // Negative
+        self.cpu_write(self.addr_abs, (temp & 0x00FF) as u8);
+        return 0;
+    }
+
+    pub fn anc(&mut self) -> u8
+    {
+        self.fetch();
+        self.a = self.a & self.fetched_data;
+        self.set_flag(Flags6502::C, self.a & 0x80 == 0x80); // Carry
+        self.set_flag(Flags6502::Z, self.a == 0x00); // Zero
+        self.set_flag(Flags6502::N, self.a & 0x80 == 0x80); // Negative
+        return 0;
+    }
+
+    // Also known as LSE
+    // LSRs the contents of a memory location and then EORs the result with the accumulator.
+    pub fn sre(&mut self) -> u8
+    {
+        self.fetch();
+        self.set_flag(Flags6502::C, (self.fetched_data & 0x0001) == 0x0001); // Carry
+        let temp: u16 = (self.fetched_data as u16) >> 1;
+        self.a = self.a ^ ((temp & 0x00FF) as u8);
+        self.set_flag(Flags6502::Z, self.a == 0x00);
+        self.set_flag(Flags6502::N, (self.a & 0x80) == 0x80);
+        self.cpu_write(self.addr_abs, (temp & 0x00FF) as u8);
+        return 0;
+    }
+
+    pub fn rra(&mut self) -> u8
+    {
+        self.fetch();
+        let temp: u16 = (self.fetched_data as u16) >> 1 | ((self.get_flag(Flags6502::C) as u16) << 7);
+        self.set_flag(Flags6502::C, (self.fetched_data & 0x01) == 0x01);
+
+        let result = self.a as u16 + temp + self.get_flag(Flags6502::C) as u16;
+
+        // If we overflow into 16-bit range, set the carry bit
+        self.set_flag(Flags6502::C, result > 255);
+        self.set_flag(Flags6502::Z, (result & 0x00FF) == 0);
+
+        let v: u16 = (!(self.a as u16 ^ temp as u16)) & ((self.a as u16 ^ result) & 0x0080);
+        self.set_flag(Flags6502::V, v != 0);
+        self.set_flag(Flags6502::N, result & 0x80 == 0x80);
+
+        // Load the result into the accumulator
+        self.a = (result & 0x00FF) as u8;
+        self.cpu_write(self.addr_abs, (temp & 0x00FF) as u8);
+
+        return 0;
+    }
+
+    pub fn kil(&mut self) -> u8 
+    {
+        // Running this instruction kills the device
+        panic!("Executed KIL instruction");
+    }
+
+    pub fn arr(&mut self) -> u8
+    {
+        panic!("Executed ARR instruction");
+    }
+
+    pub fn xaa(&mut self) -> u8
+    {
+        panic!("Executed XAA instruction");
+    }
+
+    pub fn ahx(&mut self) -> u8
+    {
+        panic!("Executed AHX instruction");
+    }
+
+    pub fn tas(&mut self) -> u8
+    {
+        panic!("Executed TAS instruction");
+    }
+
+    pub fn shx(&mut self) -> u8
+    {
+        panic!("Executed SHX instruction");
+    }
+
+    pub fn las(&mut self) -> u8
+    {
+        panic!("Executed LAS instruction");
+    }
+
+    pub fn axs(&mut self) -> u8
+    {
+        panic!("Executed AXS instruction");
+    }
+
+    pub fn alr(&mut self) -> u8
+    {
+        panic!("Executed ALR instruction");
     }
 
     pub fn new() -> Self
@@ -1396,9 +1538,7 @@ impl Cpu6502
         let mut hi: u8 = 0;
         self.cpu_read(self.addr_abs + 1, &mut hi);
     
-        // self.pc = ((hi as u16) << 8) | lo as u16;
-
-        self.pc = 0xc000;
+        self.pc = ((hi as u16) << 8) | lo as u16;
 
         self.a = 0;
         self.x = 0;
@@ -1542,21 +1682,15 @@ impl Clockable for Cpu6502
                 print!("");
             }
 
-            let result = self.disassemble(self.pc, self.pc);
-            let mut test_result_1: u8 = 0;
-            self.cpu_read(0x02, &mut test_result_1);
-
-            let mut test_result_2: u8 = 0;
-            self.cpu_read(0x03, &mut test_result_2);
+            //let result = self.disassemble(self.pc, self.pc);
 
             self.cycles = self.ins[self.opcode as usize].cycles;
-
-            let last_pc = self.pc;
+            // let last_pc = self.pc;
             self.pc += 1;
 
             let additional_cycle1: u8 = (self.ins[self.opcode as usize].addr_mode)(self);
             let additional_cycle2: u8 = (self.ins[self.opcode as usize].op)(self);
-            println!("{}", result.get(&last_pc).unwrap());
+            //println!("{}", result.get(&last_pc).unwrap());
 
             // TODO: Why is this a binary AND?
             self.cycles += additional_cycle1 & additional_cycle2;

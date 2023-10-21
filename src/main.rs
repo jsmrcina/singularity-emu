@@ -50,7 +50,7 @@ impl MainState
         let bus_trait_object = Rc::clone(&s.bus);// as Rc<RefCell<dyn ReadWrite>>;
         s.bus.borrow_mut().get_cpu().borrow_mut().set_bus(Some(bus_trait_object));
 
-        let cart = Cart::new("data\\nestest.nes".to_string());
+        let cart = Cart::new("data\\super mario.nes".to_string());
         match cart
         {
             Ok(x) =>
@@ -353,23 +353,23 @@ impl event::EventHandler<ggez::GameError> for MainState
         let ppu = self.bus.borrow_mut().get_ppu();
 
         // TODO: Stopped here, looks like the nametables aren't correct under the covers.
-        let mut x = 0;
-        let mut y = 0;
+        // let mut x = 0;
+        // let mut y = 0;
 
-        while y < 30
-        {
-            while x < 32
-            {
-                let output = format!("{:02x}", ppu.borrow_mut().get_name_table()[0][y * 32 + x]);
-                canvas.draw(&Text::new(output), Vec2::new((x as f32) * 16.0, (y as f32) * 16.0));
-                x += 1;
-            }
+        // while y < 30
+        // {
+        //     while x < 32
+        //     {
+        //         let output = format!("{:02x}", ppu.borrow_mut().get_name_table()[0][y * 32 + x]);
+        //         canvas.draw(&Text::new(output), Vec2::new((x as f32) * 16.0, (y as f32) * 16.0));
+        //         x += 1;
+        //     }
 
-            x = 0;
-            y += 1;
-        }
+        //     x = 0;
+        //     y += 1;
+        // }
 
-        // ppu.borrow_mut().render(ctx, &mut canvas, self.selected_palette);
+        ppu.borrow_mut().render(ctx, &mut canvas, self.selected_palette);
         canvas.finish(ctx)?;
         Ok(())
     }
