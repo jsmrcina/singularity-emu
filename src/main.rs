@@ -1,13 +1,14 @@
 use bus::main_bus::MainBus;
 use cartridge::cart::Cart;
 use input::controller::NesKey;
+use traits::ReadWrite;
 use crate::cpu::cpu6502::Flags6502;
 use crate::traits::Clockable;
 
 use std::cell::RefCell;
+use std::ops::Deref;
 use std::rc::Rc;
 use std::collections::BTreeMap;
-use std::ops::Bound;
 
 use ggez::event;
 use ggez::graphics::{self};
@@ -52,7 +53,7 @@ impl MainState
         let bus_trait_object = Rc::clone(&s.bus);// as Rc<RefCell<dyn ReadWrite>>;
         s.bus.borrow_mut().get_cpu().borrow_mut().set_bus(Some(bus_trait_object));
 
-        let cart = Cart::new("data\\nestest.nes".to_string());
+        let cart = Cart::new("data\\donkey kong.nes".to_string());
         match cart
         {
             Ok(x) =>
@@ -161,46 +162,67 @@ impl MainState
 
     }
 
-    fn draw_code(&mut self, x: f32, y: f32, n_lines: i32, canvas: &mut ggez::graphics::Canvas)
-    {
-        let cpu = self.bus.borrow_mut().get_cpu();
+    // fn draw_code(&mut self, x: f32, y: f32, n_lines: i32, canvas: &mut ggez::graphics::Canvas)
+    // {
+    //     let cpu = self.bus.borrow_mut().get_cpu();
 
-        let mut before_keys: Vec<_> = self.map_asm.range((Bound::Unbounded, Bound::Excluded(cpu.borrow().get_pc())))
-                                                .rev()
-                                                .take((n_lines / 2) as usize)
-                                                .collect();
+    //     let mut before_keys: Vec<_> = self.map_asm.range((Bound::Unbounded, Bound::Excluded(cpu.borrow().get_pc())))
+    //                                             .rev()
+    //                                             .take((n_lines / 2) as usize)
+    //                                             .collect();
 
-        before_keys.reverse();
+    //     before_keys.reverse();
 
-        let after_keys: Vec<_> = self.map_asm.range((Bound::Excluded(cpu.borrow().get_pc()), Bound::Unbounded))
-            .take((n_lines / 2) as usize)
-            .collect();
+    //     let after_keys: Vec<_> = self.map_asm.range((Bound::Excluded(cpu.borrow().get_pc()), Bound::Unbounded))
+    //         .take((n_lines / 2) as usize)
+    //         .collect();
 
-        let mut num_offset: i32 = 0;
-        for (_, value) in before_keys
-        {
-            canvas.draw(&Text::new(value), Vec2::new(x, y + (MainState::OFFSET_Y * num_offset as f32)));
-            num_offset += 1;
-        }
+    //     let mut num_offset: i32 = 0;
+    //     for (_, value) in before_keys
+    //     {
+    //         canvas.draw(&Text::new(value), Vec2::new(x, y + (MainState::OFFSET_Y * num_offset as f32)));
+    //         num_offset += 1;
+    //     }
 
-        let inst = self.map_asm.get(&cpu.borrow().get_pc());
-        match inst
-        {
+    //     let inst = self.map_asm.get(&cpu.borrow().get_pc());
+    //     match inst
+    //     {
             
-            Some(s) => canvas.draw(&Text::new(s),
-                graphics::DrawParam::new().color(graphics::Color::CYAN).dest(Vec2::new(x, y + (MainState::OFFSET_Y * num_offset as f32)))),
-            None => ()
-        }
+    //         Some(s) => canvas.draw(&Text::new(s),
+    //             graphics::DrawParam::new().color(graphics::Color::CYAN).dest(Vec2::new(x, y + (MainState::OFFSET_Y * num_offset as f32)))),
+    //         None => ()
+    //     }
 
-        num_offset += 1;
+    //     num_offset += 1;
 
-        for (_, value) in after_keys
+    //     for (_, value) in after_keys
+    //     {
+    //         canvas.draw(&Text::new(value), Vec2::new(x, y + (MainState::OFFSET_Y * num_offset as f32)));
+    //         num_offset += 1;
+    //     }
+    // }
+
+    fn draw_oam(&mut self, x: f32, y: f32, n_lines: i32, canvas: &mut ggez::graphics::Canvas)
+    {
+        for i in 0..(n_lines as u8)
         {
-            canvas.draw(&Text::new(value), Vec2::new(x, y + (MainState::OFFSET_Y * num_offset as f32)));
-            num_offset += 1;
+            let ppu = self.bus.borrow_mut().get_ppu();
+            let byte_0 = ppu.borrow_mut().get_oam_memory_at_addr(i * 4 + 0);
+            let byte_1 = ppu.borrow_mut().get_oam_memory_at_addr(i * 4 + 1);
+            let byte_2 = ppu.borrow_mut().get_oam_memory_at_addr(i * 4 + 2);
+            let byte_3 = ppu.borrow_mut().get_oam_memory_at_addr(i * 4 + 3);
+
+            let s: String = format!("{:02x}: ({}, {}) ID: {:02x} AT: {:02x}",
+                i,
+                byte_3,
+                byte_0,
+                byte_1,
+                byte_2);
+            
+            canvas.draw(&Text::new(s), Vec2::new(x, y + (i as f32 * MainState::OFFSET_Y)));
         }
     }
-
+    
     fn reset(&mut self)
     {
         // Reset the main bus
@@ -247,7 +269,6 @@ impl MainState
 
         if ctx.keyboard.is_key_just_pressed(ggez::input::keyboard::KeyCode::Down)
         {
-            println!("down");
             bus.get_controller(0).borrow_mut().set_live_state_bit(NesKey::DOWN);
         }
 
@@ -270,12 +291,55 @@ impl Clockable for MainState
     {
         let cpu = self.bus.borrow_mut().get_cpu();
         let ppu = self.bus.borrow_mut().get_ppu();
+        let dma_info_ptr = self.bus.borrow_mut().get_dma_info();
+        let mut dma_info = dma_info_ptr.borrow_mut();
         let clock_counter = self.bus.borrow().get_clock_counter();
 
         ppu.borrow_mut().clock_tick();
         if clock_counter % 3 == 0
         {
-            cpu.borrow_mut().clock_tick();
+            if dma_info.is_transfer_in_progress()
+            {
+                if dma_info.is_sync_needed()
+                {
+                    // Since DMA transfer can only be initiated on an even clock cycle, we synchronize here
+                    if self.bus.borrow_mut().get_clock_counter() % 2 == 1
+                    {
+                        dma_info.set_sync_needed(false);
+                    }
+                }
+                else
+                {
+                    // On even cycles, read from the bus (could be CPU, cart, etc.)
+                    // On odd cycles, write to the PPU
+                    if self.bus.borrow_mut().get_clock_counter() % 2 == 0
+                    {
+                        let mut data: u8 = 0;
+                        self.bus.borrow_mut().cpu_read((dma_info.get_page() as u16) << 8 | (dma_info.get_addr() as u16), &mut data);
+                        dma_info.set_data(data);
+                    }
+                    else
+                    {
+                        ppu.borrow_mut().set_oam_memory_at_addr(dma_info.get_addr(), dma_info.get_data());
+                        let new_addr = dma_info.get_addr().wrapping_add(1);
+                        dma_info.set_addr(new_addr);
+
+                        if new_addr == 0x00
+                        {
+                            dma_info.set_transfer_in_progress(false);
+                            dma_info.set_sync_needed(true);
+                        }
+                    }
+                }
+            }
+            else
+            {
+                // We know we won't be using these and the CPU may need to borrow them
+                drop(dma_info);
+                drop(dma_info_ptr);
+
+                cpu.borrow_mut().clock_tick();
+            }
         }
 
         if ppu.borrow().get_nmi()
@@ -399,7 +463,8 @@ impl event::EventHandler<ggez::GameError> for MainState
         // MainState::draw_cpu_ram(self, 2, 2, 0x0000, 16, 16, &mut canvas);
         // MainState::draw_cpu_ram(self, 2, 250, 0x8000, 16, 16, &mut canvas);
         MainState::draw_cpu(self, 525.0, 2.0, &mut canvas);
-        MainState::draw_code(self, 525.0, 100.0, 27, &mut canvas);
+        // MainState::draw_code(self, 525.0, 100.0, 27, &mut canvas);
+        MainState::draw_oam(self, 525.0, 100.0, 26, &mut canvas);
 
         let ppu = self.bus.borrow_mut().get_ppu();
 

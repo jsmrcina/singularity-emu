@@ -32,7 +32,6 @@ impl NesController
 
     pub fn snapshot(&mut self)
     {
-        println!("{:#b}", self.live_state);
         self.snapshot_state = self.live_state;
     }
 

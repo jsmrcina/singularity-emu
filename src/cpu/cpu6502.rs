@@ -1677,11 +1677,6 @@ impl Clockable for Cpu6502
             // TODO: Why?
             self.set_flag(Flags6502::U, true);
 
-            if self.total_cycles == 192
-            {
-                print!("");
-            }
-
             //let result = self.disassemble(self.pc, self.pc);
 
             self.cycles = self.ins[self.opcode as usize].cycles;

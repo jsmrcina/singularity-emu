@@ -64,6 +64,15 @@ bitfield! {
     unused, set_unused: 15;
 }
 
+#[derive(Default, Copy, Clone)]
+struct ObjectAttributeEntry
+{
+    y: u8,
+    id: u8,
+    attribute: u8,
+    x: u8
+}
+
 struct BgNextTileInfo
 {
     id: u8,
@@ -86,6 +95,7 @@ pub struct Ppu2c02
     patterns: Box<[[u8; 4096]; 2]>,
     nametables: Box<[[u8; 1024]; 2]>,
     palettes: [u8; 32],
+    oam: [ObjectAttributeEntry; 64],
     frame_complete: bool,
     scan_line: i32,
     cycle: i32,
@@ -100,7 +110,8 @@ pub struct Ppu2c02
     ppu_data_buffer: u8,
     nmi: bool,
     bg_next_info: BgNextTileInfo,
-    bg_shifter_info: BgShifterInfo
+    bg_shifter_info: BgShifterInfo,
+    oam_addr: u8
 }
 
 impl Ppu2c02
@@ -113,6 +124,7 @@ impl Ppu2c02
             patterns: Box::new([[0u8; 4096]; 2]),
             nametables: Box::new([[0u8; 1024]; 2]),
             palettes: [0u8; 32],
+            oam: [ObjectAttributeEntry { y: 0, id: 0, attribute: 0, x: 0 }; 64],
             frame_complete: false,
             scan_line: 0,
             cycle: 0,
@@ -127,7 +139,8 @@ impl Ppu2c02
             ppu_data_buffer: 0x00,
             nmi: false,
             bg_next_info: BgNextTileInfo { id: 0x00, attrib: 0x00, lsb: 0x00, msb: 0x00 },
-            bg_shifter_info: BgShifterInfo { pattern_lo: 0x0000, pattern_hi: 0x0000, attrib_lo: 0x0000, attrib_hi: 0x0000 }
+            bg_shifter_info: BgShifterInfo { pattern_lo: 0x0000, pattern_hi: 0x0000, attrib_lo: 0x0000, attrib_hi: 0x0000 },
+            oam_addr: 0
         };
 
         return s;
@@ -166,6 +179,48 @@ impl Ppu2c02
     pub fn get_scan_line(&self) -> i32
     {
         return self.scan_line;
+    }
+
+    pub fn set_oam_memory_at_addr(&mut self, addr: u8, data: u8)
+    {
+        unsafe
+        {
+            let oam_as_u8_ptr: &mut [u8] = std::slice::from_raw_parts_mut(
+                self.oam.as_mut_ptr() as *mut u8,
+                self.oam.len() * std::mem::size_of::<ObjectAttributeEntry>()
+            );
+
+            oam_as_u8_ptr[addr as usize] = data;
+        }
+    }
+
+    pub fn get_oam_memory_at_addr(&mut self, addr: u8) -> u8
+    {
+        unsafe
+        {
+            let oam_as_u8_ptr: &mut [u8] = std::slice::from_raw_parts_mut(
+                self.oam.as_mut_ptr() as *mut u8,
+                self.oam.len() * std::mem::size_of::<ObjectAttributeEntry>()
+            );
+
+            return oam_as_u8_ptr[addr as usize];
+        }
+    }
+
+    pub fn clear_oam_memory(&mut self)
+    {
+        unsafe
+        {
+            let oam_as_u8_ptr: &mut [u8] = std::slice::from_raw_parts_mut(
+                self.oam.as_mut_ptr() as *mut u8,
+                self.oam.len() * std::mem::size_of::<ObjectAttributeEntry>()
+            );
+
+            for i in 0..oam_as_u8_ptr.len()
+            {
+                oam_as_u8_ptr[i] = 0;
+            }
+        }
     }
 
     pub fn render(&mut self, ctx: &mut Context, canvas: &mut ggez::graphics::Canvas, palette_id: u8)
@@ -390,10 +445,18 @@ impl ReadWrite for Ppu2c02
             }
             // Status
             0x0002 => return true,
-            // OAM Status
-            0x0003 => return true,
+            // OAM Address
+            0x0003 =>
+            {
+                self.oam_addr = data;
+                return true;
+            }
             // OAM Data
-            0x0004 => return true,
+            0x0004 =>
+            {
+                self.set_oam_memory_at_addr(self.oam_addr, data);
+                return true;
+            }
             // Scroll
             0x0005 =>
             {
@@ -479,7 +542,11 @@ impl ReadWrite for Ppu2c02
             // OAM Status
             0x0003 => return true,
             // OAM Data
-            0x0004 => return true,
+            0x0004 =>
+            {
+                *data = self.get_oam_memory_at_addr(self.oam_addr);
+                return true;
+            }
             // Scroll
             0x0005 => return true,
             // PPU Address
