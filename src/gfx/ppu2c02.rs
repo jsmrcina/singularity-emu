@@ -64,6 +64,7 @@ bitfield! {
     unused, set_unused: 15;
 }
 
+// TODO: Is there a more RUST-y way to do this?
 #[derive(Default, Copy, Clone)]
 struct ObjectAttributeEntry
 {
@@ -89,6 +90,12 @@ struct BgShifterInfo
     attrib_hi: u16
 }
 
+struct FgShifterInfo
+{
+    pattern_lo: [u8; 8],
+    pattern_hi: [u8; 8]
+}
+
 pub struct Ppu2c02
 {
     cartridge: Option<Rc<RefCell<Cart>>>,
@@ -96,6 +103,8 @@ pub struct Ppu2c02
     nametables: Box<[[u8; 1024]; 2]>,
     palettes: [u8; 32],
     oam: [ObjectAttributeEntry; 64],
+    sprite_scanline: [ObjectAttributeEntry; 8],
+    sprite_count: u8,
     frame_complete: bool,
     scan_line: i32,
     cycle: i32,
@@ -111,7 +120,8 @@ pub struct Ppu2c02
     nmi: bool,
     bg_next_info: BgNextTileInfo,
     bg_shifter_info: BgShifterInfo,
-    oam_addr: u8
+    oam_addr: u8,
+    fg_shifter_info: FgShifterInfo
 }
 
 impl Ppu2c02
@@ -125,6 +135,8 @@ impl Ppu2c02
             nametables: Box::new([[0u8; 1024]; 2]),
             palettes: [0u8; 32],
             oam: [ObjectAttributeEntry { y: 0, id: 0, attribute: 0, x: 0 }; 64],
+            sprite_scanline: [ObjectAttributeEntry { y: 0, id: 0, attribute: 0, x: 0 }; 8],
+            sprite_count: 0,
             frame_complete: false,
             scan_line: 0,
             cycle: 0,
@@ -140,7 +152,8 @@ impl Ppu2c02
             nmi: false,
             bg_next_info: BgNextTileInfo { id: 0x00, attrib: 0x00, lsb: 0x00, msb: 0x00 },
             bg_shifter_info: BgShifterInfo { pattern_lo: 0x0000, pattern_hi: 0x0000, attrib_lo: 0x0000, attrib_hi: 0x0000 },
-            oam_addr: 0
+            oam_addr: 0,
+            fg_shifter_info: FgShifterInfo { pattern_lo: [0; 8] , pattern_hi: [0; 8] }
         };
 
         return s;
@@ -207,20 +220,22 @@ impl Ppu2c02
         }
     }
 
-    pub fn clear_oam_memory(&mut self)
+    fn clear_scanline_memory(&mut self)
     {
         unsafe
         {
-            let oam_as_u8_ptr: &mut [u8] = std::slice::from_raw_parts_mut(
-                self.oam.as_mut_ptr() as *mut u8,
-                self.oam.len() * std::mem::size_of::<ObjectAttributeEntry>()
+            let sprite_scanline_as_ptr: &mut [u8] = std::slice::from_raw_parts_mut(
+                self.sprite_scanline.as_mut_ptr() as *mut u8,
+                self.sprite_scanline.len() * std::mem::size_of::<ObjectAttributeEntry>()
             );
 
-            for i in 0..oam_as_u8_ptr.len()
+            for i in 0..sprite_scanline_as_ptr.len()
             {
-                oam_as_u8_ptr[i] = 0;
+                sprite_scanline_as_ptr[i] = 0xFF;
             }
         }
+
+        self.sprite_count = 0;
     }
 
     pub fn render(&mut self, ctx: &mut Context, canvas: &mut ggez::graphics::Canvas, palette_id: u8)
@@ -394,6 +409,22 @@ impl Ppu2c02
             self.bg_shifter_info.pattern_hi <<= 1;
             self.bg_shifter_info.attrib_lo <<= 1;
             self.bg_shifter_info.attrib_hi <<= 1;
+        }
+
+        if self.mask.render_sprites() && self.cycle >= 1 && self.cycle < 258
+        {
+            for i in 0..self.sprite_count
+            {
+                if self.sprite_scanline[i as usize].x > 0
+                {
+                    self.sprite_scanline[i as usize].x -= 1;
+                }
+                else
+                {
+                    self.fg_shifter_info.pattern_lo[i as usize] <<= 1;
+                    self.fg_shifter_info.pattern_hi[i as usize] <<= 1;
+                }
+            }
         }
     }
 
@@ -812,6 +843,13 @@ impl Clockable for Ppu2c02
             if self.scan_line == -1 && self.cycle == 1
             {
                 self.status.set_vertical_blank(false);
+                self.status.set_sprite_overflow(false);
+
+                for i in 0..8
+                {
+                    self.fg_shifter_info.pattern_lo[i as usize] = 0;
+                    self.fg_shifter_info.pattern_hi[i as usize] = 0;
+                }
             }
 
             // Visible cycles
@@ -890,6 +928,11 @@ impl Clockable for Ppu2c02
                 self.transfer_address_x();
             }
 
+            if self.scan_line == -1 && self.cycle >= 280 && self.cycle < 305
+            {
+                self.transfer_address_y();
+            }
+
             // These are superfluous, but technically in the implementation
             if self.cycle == 338 || self.cycle == 340
             {
@@ -898,9 +941,137 @@ impl Clockable for Ppu2c02
                 self.bg_next_info.id = id;
             }
 
-            if self.scan_line == -1 && self.cycle >= 280 && self.cycle < 305
+            // Foreground rendering
+            if self.cycle == 257 && self.scan_line >= 0
             {
-                self.transfer_address_y();
+                self.clear_scanline_memory();
+
+                let mut oam_entry: u8 = 0;
+                while oam_entry < 64 && self.sprite_count < 9
+                {
+                    let diff: i16 = self.scan_line as i16 - self.oam[oam_entry as usize].y as i16;
+                    let mut sprite_size = 8;
+                    if self.ctrl.sprite_size()
+                    {
+                        sprite_size = 16;
+                    }
+
+                    if diff >= 0 && diff < sprite_size
+                    {
+                        if self.sprite_count < 8
+                        {
+                            self.sprite_scanline[self.sprite_count as usize] = self.oam[oam_entry as usize];
+                            self.sprite_count += 1;
+                        }
+                    }
+
+                    oam_entry += 1;
+                }
+                
+                if self.sprite_count > 8
+                {
+                    self.status.set_sprite_overflow(true);
+                }
+                else
+                {
+                    self.status.set_sprite_overflow(false);
+                }
+            }
+
+            if self.cycle == 340
+            {
+                for i in 0..self.sprite_count
+                {
+                    let index = i as usize;
+                    let mut sprite_pattern_bits_lo: u8 = 0;
+                    let mut sprite_pattern_bits_hi: u8 = 0;
+                    let sprite_pattern_addr_lo: u16;
+                    let sprite_pattern_addr_hi: u16;
+
+                    if !self.ctrl.sprite_size()
+                    {
+                        // 8x8 - control register determines pattern table
+                        if self.sprite_scanline[index].attribute & 0x80 != 0x80
+                        {
+                            // Not flipped vertically
+                            sprite_pattern_addr_lo =
+                                ((self.ctrl.pattern_sprite() as u16) << 12) |                               // Which pattern table (0 or 4kb)
+                                ((self.sprite_scanline[index].id as u16) << 4) |                            // Which cell, Tile ID * 16 (16 bytes per tile)
+                                (self.scan_line as u16 - self.sprite_scanline[index].y as u16);             // Which row in the cell, 0 to 7
+                        }
+                        else
+                        {
+                            // Flipped vertically
+                            sprite_pattern_addr_lo =
+                                ((self.ctrl.pattern_sprite() as u16) << 12) |                               // Which pattern table (0 or 4kb)
+                                ((self.sprite_scanline[index].id as u16) << 4) |                            // Which cell, Tile ID * 16 (16 bytes per tile)
+                                (7 - (self.scan_line as u16 - self.sprite_scanline[index].y as u16));       // Which row in the cell, 7 to 0
+                        }
+                    }
+                    else
+                    {
+                        // 8x16 - sprite attribute determines pattern table 
+                        if self.sprite_scanline[index].attribute & 0x80 != 0x80
+                        {
+                            // Not flipped vertically
+                            if self.scan_line as u8 - self.sprite_scanline[index].y < 8
+                            {
+                                // Top half of the sprite
+                                sprite_pattern_addr_lo =
+                                    (((self.sprite_scanline[index].id & 0x01) as u16) << 12) |              // Which pattern table (0 or 4kb)
+                                    ((self.sprite_scanline[index].id & 0xFE) as u16) << 4 |                 // Which cell, Tile ID * 16 (16 bytes per tile)
+                                    (self.scan_line as u16 - self.sprite_scanline[index].y as u16) & 0x07;  // Which row in the cell, 0 to 7
+                            }
+                            else
+                            {
+                                sprite_pattern_addr_lo =
+                                    (((self.sprite_scanline[index].id & 0x01) as u16) << 12) |              // Which pattern table (0 or 4kb)
+                                    ((self.sprite_scanline[index].id & 0xFE) as u16 + 1) << 4 |             // Which cell, Tile ID * 16 (16 bytes per tile)
+                                    (self.scan_line as u16 - self.sprite_scanline[index].y as u16) & 0x07;  // Which row in the cell, 0 to 7
+                            }
+                        }
+                        else
+                        {
+                            // Flipped vertically
+                            if self.scan_line as u8 - self.sprite_scanline[index].y < 8
+                            {
+                                // Top half of the sprite
+                                sprite_pattern_addr_lo =
+                                    (((self.sprite_scanline[index].id & 0x01) as u16) << 12) |              // Which pattern table (0 or 4kb)
+                                    ((self.sprite_scanline[index].id & 0xFE + 1) as u16) << 4 |                 // Which cell, Tile ID * 16 (16 bytes per tile)
+                                    (7 - (self.scan_line as u16 - self.sprite_scanline[index].y as u16)) & 0x07;  // Which row in the cell, 0 to 7
+                            }
+                            else
+                            {
+                                sprite_pattern_addr_lo =
+                                    (((self.sprite_scanline[index].id & 0x01) as u16) << 12) |              // Which pattern table (0 or 4kb)
+                                    ((self.sprite_scanline[index].id & 0xFE) as u16) << 4 |                 // Which cell, Tile ID * 16 (16 bytes per tile)
+                                    (7 - (self.scan_line as u16 - self.sprite_scanline[index].y as u16)) & 0x07;  // Which row in the cell, 0 to 7
+                            }
+                        }
+                    }
+
+                    sprite_pattern_addr_hi = sprite_pattern_addr_lo + 8;
+                    self.ppu_read(sprite_pattern_addr_lo, &mut sprite_pattern_bits_lo);
+                    self.ppu_read(sprite_pattern_addr_hi, &mut sprite_pattern_bits_hi);
+
+                    if self.sprite_scanline[index].attribute & 0x40 == 0x40
+                    {
+                        let flip_byte = |b: u8| -> u8 {
+                            let mut r: u8 = b;
+                            r = (r & 0xF0) >> 4 | (r & 0x0F) << 4;
+                            r = (r & 0xCC) >> 4 | (r & 0x33) << 2;
+                            r = (r & 0xAA) >> 1 | (r & 0x55) << 1;
+                            return r;
+                        };
+
+                        sprite_pattern_bits_lo = flip_byte(sprite_pattern_bits_lo);
+                        sprite_pattern_bits_hi = flip_byte(sprite_pattern_bits_hi);
+                    }
+
+                    self.fg_shifter_info.pattern_lo[index] = sprite_pattern_bits_lo;
+                    self.fg_shifter_info.pattern_hi[index] = sprite_pattern_bits_hi;
+                }
             }
         }
 
@@ -962,7 +1133,71 @@ impl Clockable for Ppu2c02
             bg_palette = (p1_palette << 1) | p0_palette;
         }
 
-        let color = self.get_color_from_palette_ram(bg_palette, bg_pixel);
+        let mut fg_pixel: u8 = 0;
+        let mut fg_palette: u8 = 0;
+        let mut fg_priority: bool = false;
+
+        if self.mask.render_sprites()
+        {
+            for i in 0..self.sprite_count
+            {
+                let index = i as usize;
+
+                if self.sprite_scanline[index].x == 0
+                {
+                    let fg_pixel_lo = (self.fg_shifter_info.pattern_lo[index] & 0x80) > 0;
+                    let fg_pixel_hi = (self.fg_shifter_info.pattern_hi[index] & 0x80) > 0;
+                    fg_pixel = ((fg_pixel_hi as u8) << 1) | fg_pixel_lo as u8;
+
+                    fg_palette = (self.sprite_scanline[index].attribute & 0x03) + 0x04;
+                    fg_priority = (self.sprite_scanline[index].attribute & 0x20) == 0;
+
+                    if fg_pixel != 0
+                    {
+                        // We found a visible sprite that has the highest possible priority
+                        break;
+                    }
+                }
+            }
+        }
+
+        let pixel: u8;
+        let palette: u8;
+
+        if bg_pixel == 0 && fg_pixel == 0
+        {
+            // Both are transparent, draw 'background' color
+            pixel = 0x0;
+            palette = 0x0;
+        }
+        else if bg_pixel == 0 && fg_pixel > 0
+        {
+            // Foreground wins
+            pixel = fg_pixel;
+            palette = fg_palette;
+        }
+        else if bg_pixel > 0 && fg_pixel == 0
+        {
+            // Background
+            pixel = bg_pixel;
+            palette = bg_palette;
+        }
+        else
+        {
+            // Both are visible, need to consult priority
+            if fg_priority
+            {
+                pixel = fg_pixel;
+                palette = fg_palette;
+            }
+            else
+            {
+                pixel = bg_pixel;
+                palette = bg_palette;
+            }
+        }
+
+        let color = self.get_color_from_palette_ram(palette, pixel);
         self.renderer.set_pixel_to_color(Surface::Screen, 0, color, self.scan_line, self.cycle - 1);
 
         self.cycle += 1;

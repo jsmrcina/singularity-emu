@@ -155,6 +155,11 @@ impl MainBus
         return Rc::clone(&self.dma_info);
     }
 
+    pub fn is_dma_transfer_in_progress(&self) -> bool
+    {
+        return self.dma_info.borrow().is_transfer_in_progress();
+    }
+
     pub fn get_clock_counter(&self) -> u32
     {
         return self.system_clock_counter;

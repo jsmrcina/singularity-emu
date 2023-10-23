@@ -1,12 +1,13 @@
 use bus::main_bus::MainBus;
 use cartridge::cart::Cart;
+use cpu::cpu6502::Cpu6502;
+use gfx::ppu2c02::Ppu2c02;
 use input::controller::NesKey;
 use traits::ReadWrite;
 use crate::cpu::cpu6502::Flags6502;
 use crate::traits::Clockable;
 
 use std::cell::RefCell;
-use std::ops::Deref;
 use std::rc::Rc;
 use std::collections::BTreeMap;
 
@@ -28,6 +29,8 @@ pub mod input;
 struct MainState
 {
     bus: Rc<RefCell<MainBus>>,
+    cpu: Option<Rc<RefCell<Cpu6502>>>,
+    ppu: Option<Rc<RefCell<Ppu2c02>>>,
     map_asm: BTreeMap<u16, String>,
     emulation_run: bool,
     residual_time: f32,
@@ -41,6 +44,8 @@ impl MainState
         let mut s = MainState
         {
             bus: Rc::new(RefCell::new(MainBus::new())),
+            cpu: None,
+            ppu: None,
             map_asm: BTreeMap::new(),
             emulation_run: false,
             residual_time: 0.0,
@@ -229,12 +234,12 @@ impl MainState
         self.bus.borrow_mut().reset();
 
         // Reset the CPU
-        let cpu = self.bus.borrow_mut().get_cpu();
-        cpu.borrow_mut().reset();
+        self.cpu = Some(self.bus.borrow_mut().get_cpu());
+        self.cpu.as_ref().unwrap().borrow_mut().reset();
 
         // Reset the PPU
-        let ppu = self.bus.borrow_mut().get_ppu();
-        ppu.borrow_mut().reset();
+        self.ppu = Some(self.bus.borrow_mut().get_ppu());
+        self.ppu.as_ref().unwrap().borrow_mut().reset();
     }
 
     fn process_controller_input(&mut self, ctx: &mut Context)
@@ -289,17 +294,18 @@ impl Clockable for MainState
 {
     fn clock_tick(&mut self)
     {
-        let cpu = self.bus.borrow_mut().get_cpu();
-        let ppu = self.bus.borrow_mut().get_ppu();
-        let dma_info_ptr = self.bus.borrow_mut().get_dma_info();
-        let mut dma_info = dma_info_ptr.borrow_mut();
+        let cpu = self.cpu.as_ref().unwrap();
+        let ppu = self.ppu.as_ref().unwrap();
         let clock_counter = self.bus.borrow().get_clock_counter();
 
         ppu.borrow_mut().clock_tick();
         if clock_counter % 3 == 0
         {
-            if dma_info.is_transfer_in_progress()
+            if self.bus.borrow().is_dma_transfer_in_progress()
             {
+                let dma_info_ptr = self.bus.borrow_mut().get_dma_info();
+                let mut dma_info = dma_info_ptr.borrow_mut();
+
                 if dma_info.is_sync_needed()
                 {
                     // Since DMA transfer can only be initiated on an even clock cycle, we synchronize here
@@ -334,10 +340,6 @@ impl Clockable for MainState
             }
             else
             {
-                // We know we won't be using these and the CPU may need to borrow them
-                drop(dma_info);
-                drop(dma_info_ptr);
-
                 cpu.borrow_mut().clock_tick();
             }
         }
