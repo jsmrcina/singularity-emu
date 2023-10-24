@@ -121,7 +121,9 @@ pub struct Ppu2c02
     bg_next_info: BgNextTileInfo,
     bg_shifter_info: BgShifterInfo,
     oam_addr: u8,
-    fg_shifter_info: FgShifterInfo
+    fg_shifter_info: FgShifterInfo,
+    sprite_zero_hit_possible: bool,
+    sprite_zero_being_rendered: bool
 }
 
 impl Ppu2c02
@@ -153,7 +155,9 @@ impl Ppu2c02
             bg_next_info: BgNextTileInfo { id: 0x00, attrib: 0x00, lsb: 0x00, msb: 0x00 },
             bg_shifter_info: BgShifterInfo { pattern_lo: 0x0000, pattern_hi: 0x0000, attrib_lo: 0x0000, attrib_hi: 0x0000 },
             oam_addr: 0,
-            fg_shifter_info: FgShifterInfo { pattern_lo: [0; 8] , pattern_hi: [0; 8] }
+            fg_shifter_info: FgShifterInfo { pattern_lo: [0; 8] , pattern_hi: [0; 8] },
+            sprite_zero_hit_possible: false,
+            sprite_zero_being_rendered: false
         };
 
         return s;
@@ -843,6 +847,7 @@ impl Clockable for Ppu2c02
             if self.scan_line == -1 && self.cycle == 1
             {
                 self.status.set_vertical_blank(false);
+                self.status.set_sprite_zero_hit(false);
                 self.status.set_sprite_overflow(false);
 
                 for i in 0..8
@@ -947,6 +952,7 @@ impl Clockable for Ppu2c02
                 self.clear_scanline_memory();
 
                 let mut oam_entry: u8 = 0;
+                self.sprite_zero_hit_possible = false;
                 while oam_entry < 64 && self.sprite_count < 9
                 {
                     let diff: i16 = self.scan_line as i16 - self.oam[oam_entry as usize].y as i16;
@@ -960,6 +966,12 @@ impl Clockable for Ppu2c02
                     {
                         if self.sprite_count < 8
                         {
+                            // Update whether sprite zero hit is possible
+                            if oam_entry == 0
+                            {
+                                self.sprite_zero_hit_possible = true;
+                            }
+
                             self.sprite_scanline[self.sprite_count as usize] = self.oam[oam_entry as usize];
                             self.sprite_count += 1;
                         }
@@ -1139,6 +1151,8 @@ impl Clockable for Ppu2c02
 
         if self.mask.render_sprites()
         {
+            self.sprite_zero_being_rendered = false;
+
             for i in 0..self.sprite_count
             {
                 let index = i as usize;
@@ -1154,6 +1168,11 @@ impl Clockable for Ppu2c02
 
                     if fg_pixel != 0
                     {
+                        if index == 0
+                        {
+                            self.sprite_zero_being_rendered = true;
+                        }
+
                         // We found a visible sprite that has the highest possible priority
                         break;
                     }
@@ -1194,6 +1213,27 @@ impl Clockable for Ppu2c02
             {
                 pixel = bg_pixel;
                 palette = bg_palette;
+            }
+
+            if self.sprite_zero_hit_possible && self.sprite_zero_being_rendered
+            {
+                if self.mask.render_background() && self.mask.render_sprites()
+                {
+                    if !(self.mask.render_background_left() | self.mask.render_sprites_left())
+                    {
+                        if self.cycle >= 9 && self.cycle < 258
+                        {
+                            self.status.set_sprite_zero_hit(true);
+                        }
+                    }
+                    else
+                    {
+                        if self.cycle >= 1 && self.cycle < 258
+                        {
+                            self.status.set_sprite_zero_hit(true);
+                        }                        
+                    }
+                }
             }
         }
 

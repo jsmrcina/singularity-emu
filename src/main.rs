@@ -58,7 +58,7 @@ impl MainState
         let bus_trait_object = Rc::clone(&s.bus);// as Rc<RefCell<dyn ReadWrite>>;
         s.bus.borrow_mut().get_cpu().borrow_mut().set_bus(Some(bus_trait_object));
 
-        let cart = Cart::new("data\\donkey kong.nes".to_string());
+        let cart = Cart::new("data\\super mario.nes".to_string());
         match cart
         {
             Ok(x) =>
@@ -247,42 +247,42 @@ impl MainState
         let mut bus = self.bus.borrow_mut();
         bus.get_controller(0).borrow_mut().clear_live_state();
         
-        if ctx.keyboard.is_key_just_pressed(ggez::input::keyboard::KeyCode::X)
+        if ctx.keyboard.is_key_pressed(ggez::input::keyboard::KeyCode::X)
         {
             bus.get_controller(0).borrow_mut().set_live_state_bit(NesKey::A);
         }
 
-        if ctx.keyboard.is_key_just_pressed(ggez::input::keyboard::KeyCode::Z)
+        if ctx.keyboard.is_key_pressed(ggez::input::keyboard::KeyCode::Z)
         {
             bus.get_controller(0).borrow_mut().set_live_state_bit(NesKey::B);
         }
 
-        if ctx.keyboard.is_key_just_pressed(ggez::input::keyboard::KeyCode::A)
+        if ctx.keyboard.is_key_pressed(ggez::input::keyboard::KeyCode::A)
         {
             bus.get_controller(0).borrow_mut().set_live_state_bit(NesKey::START);
         }
 
-        if ctx.keyboard.is_key_just_pressed(ggez::input::keyboard::KeyCode::S)
+        if ctx.keyboard.is_key_pressed(ggez::input::keyboard::KeyCode::S)
         {
             bus.get_controller(0).borrow_mut().set_live_state_bit(NesKey::SELECT);
         }
 
-        if ctx.keyboard.is_key_just_pressed(ggez::input::keyboard::KeyCode::Up)
+        if ctx.keyboard.is_key_pressed(ggez::input::keyboard::KeyCode::Up)
         {
             bus.get_controller(0).borrow_mut().set_live_state_bit(NesKey::UP);
         }
 
-        if ctx.keyboard.is_key_just_pressed(ggez::input::keyboard::KeyCode::Down)
+        if ctx.keyboard.is_key_pressed(ggez::input::keyboard::KeyCode::Down)
         {
             bus.get_controller(0).borrow_mut().set_live_state_bit(NesKey::DOWN);
         }
 
-        if ctx.keyboard.is_key_just_pressed(ggez::input::keyboard::KeyCode::Left)
+        if ctx.keyboard.is_key_pressed(ggez::input::keyboard::KeyCode::Left)
         {
             bus.get_controller(0).borrow_mut().set_live_state_bit(NesKey::LEFT);
         }
 
-        if ctx.keyboard.is_key_just_pressed(ggez::input::keyboard::KeyCode::Right)
+        if ctx.keyboard.is_key_pressed(ggez::input::keyboard::KeyCode::Right)
         {
             bus.get_controller(0).borrow_mut().set_live_state_bit(NesKey::RIGHT);
         }
@@ -358,8 +358,6 @@ impl event::EventHandler<ggez::GameError> for MainState
 {
     fn update(&mut self, ctx: &mut Context) -> GameResult
     {
-        let cpu = self.bus.borrow_mut().get_cpu();
-
         if self.emulation_run
         {
             if self.residual_time > 0.0
@@ -385,6 +383,8 @@ impl event::EventHandler<ggez::GameError> for MainState
         }
         else
         {
+            let cpu = self.bus.borrow_mut().get_cpu();
+
             // Stepping mode
             if ctx.keyboard.is_key_just_pressed(ggez::input::keyboard::KeyCode::C)
             {   
