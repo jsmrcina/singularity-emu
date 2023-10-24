@@ -242,11 +242,11 @@ impl Ppu2c02
         self.sprite_count = 0;
     }
 
-    pub fn render(&mut self, ctx: &mut Context, canvas: &mut ggez::graphics::Canvas, palette_id: u8)
+    pub fn render(&mut self, ctx: &mut Context, canvas: &mut ggez::graphics::Canvas, render_scale: f32)
     {
-        self.prepare_pattern_table(0, palette_id);
-        self.prepare_pattern_table(1, palette_id);
-        self.renderer.render(ctx, canvas);
+        self.prepare_pattern_table(0);
+        self.prepare_pattern_table(1);
+        self.renderer.render(ctx, canvas, render_scale);
     }
 
     pub fn get_color_from_palette_ram(&mut self, palette_id: u8, pixel: u8) -> graphics::Color
@@ -264,7 +264,7 @@ impl Ppu2c02
     }
 
     // pattern_index is either 0 or 1 depending on whether we're reading from the left or right side of the pattern table
-    pub fn prepare_pattern_table(&mut self, pattern_index: u16, palette_id: u8)
+    pub fn prepare_pattern_table(&mut self, pattern_index: u16)
     {        
         const TILE_SIZE_IN_BYTES: u16 = 16;
         const TABLE_ROW_SIZE_IN_BYTES: u16 = TILE_SIZE_IN_BYTES * 16;
@@ -300,7 +300,7 @@ impl Ppu2c02
                         tile_lsb >>= 1;
                         tile_msb >>= 1;
 
-                        let color = self.get_color_from_palette_ram(palette_id, pixel);
+                        let color = self.get_color_from_palette_ram(0, pixel);
                         self.renderer.set_pixel_to_color(Surface::Pattern, pattern_index as usize, color,
                                 (t_y * 8 + row) as i32,
                                 (t_x * 8 + (7 - col)) as i32); // TODO: Look at this again, (7 - col) is done because we are drawing right to left
@@ -1072,7 +1072,7 @@ impl Clockable for Ppu2c02
                         let flip_byte = |b: u8| -> u8 {
                             let mut r: u8 = b;
                             r = (r & 0xF0) >> 4 | (r & 0x0F) << 4;
-                            r = (r & 0xCC) >> 4 | (r & 0x33) << 2;
+                            r = (r & 0xCC) >> 2 | (r & 0x33) << 2;
                             r = (r & 0xAA) >> 1 | (r & 0x55) << 1;
                             return r;
                         };
@@ -1359,7 +1359,7 @@ impl Ppu2c02Renderer
 
     }
 
-    pub fn render(&mut self, ctx: &mut Context, canvas: &mut ggez::graphics::Canvas)
+    pub fn render(&mut self, ctx: &mut Context, canvas: &mut ggez::graphics::Canvas, render_scale: f32)
     {
         canvas.set_sampler(Sampler::from(graphics::FilterMode::Nearest));
 
@@ -1371,18 +1371,18 @@ impl Ppu2c02Renderer
 
         let screen_params = graphics::DrawParam::new()
             .dest(Vec2::new(0.0, 0.0))
-            .scale(Vec2::new(2.0, 2.0));
+            .scale(Vec2::new(render_scale, render_scale));
         
         screen_image.draw(canvas, screen_params);
 
         let pattern0_params = graphics::DrawParam::new()
-            .dest(Vec2::new(525.0, 500.0))
-            .scale(Vec2::new(2.0, 2.0));
+            .dest(Vec2::new(775.0, 500.0))
+            .scale(Vec2::new(render_scale, render_scale));
         pattern0_image.draw(canvas, pattern0_params);
 
         let pattern1_params = graphics::DrawParam::new()
-            .dest(Vec2::new(800.0, 500.0))
-            .scale(Vec2::new(2.0, 2.0));
+            .dest(Vec2::new(1050.0, 500.0))
+            .scale(Vec2::new(render_scale, render_scale));
         pattern1_image.draw(canvas, pattern1_params);
     }
 

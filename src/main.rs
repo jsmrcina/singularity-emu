@@ -8,6 +8,7 @@ use crate::cpu::cpu6502::Flags6502;
 use crate::traits::Clockable;
 
 use std::cell::RefCell;
+use std::ops::Bound;
 use std::rc::Rc;
 use std::collections::BTreeMap;
 
@@ -33,8 +34,7 @@ struct MainState
     ppu: Option<Rc<RefCell<Ppu2c02>>>,
     map_asm: BTreeMap<u16, String>,
     emulation_run: bool,
-    residual_time: f32,
-    selected_palette: u8
+    residual_time: f32
 }
 
 impl MainState
@@ -48,8 +48,7 @@ impl MainState
             ppu: None,
             map_asm: BTreeMap::new(),
             emulation_run: false,
-            residual_time: 0.0,
-            selected_palette: 0
+            residual_time: 0.0
         };
 
         // Link the CPU to the BUS
@@ -74,7 +73,7 @@ impl MainState
 
         // Dissemble code into our main state so we can render it\
         let cpu = s.bus.borrow_mut().get_cpu();
-        s.map_asm = cpu.borrow_mut().disassemble(0x0000, 0xFFFF);
+        s.map_asm = cpu.borrow_mut().disassemble(0x0000, 0xFFFF, false);
 
         // Reset the CPU
         s.reset();
@@ -85,26 +84,26 @@ impl MainState
     const OFFSET_X: f32 = 16.0;
     const OFFSET_Y: f32 = 14.0;
 
-    // fn draw_cpu_ram(&mut self, x: i32, y: i32, mut n_addr: u16, n_rows: i32, n_cols: i32, canvas: &mut ggez::graphics::Canvas)
-    // {
-    //     let n_cpu_ram_x: f32 = x as f32;
-    //     let mut n_cpu_ram_y: f32 = y as f32;
+    fn draw_cpu_ram(&mut self, x: i32, y: i32, mut n_addr: u16, n_rows: i32, n_cols: i32, canvas: &mut ggez::graphics::Canvas)
+    {
+        let n_cpu_ram_x: f32 = x as f32;
+        let mut n_cpu_ram_y: f32 = y as f32;
 
-    //     for _ in 0..n_rows
-    //     {
-    //         let mut s_offset: String = format!("${:04x}:", n_addr);
-    //         for _ in 0..n_cols
-    //         {
-    //             let mut data: u8 = 0;
-    //             self.bus.borrow_mut().cpu_read(n_addr, &mut data);
-    //             s_offset = s_offset + &format!(" {:02x}", data);
-    //             n_addr = n_addr + 1;
-    //         }
-    //         let text = Text::new(s_offset);
-    //         canvas.draw(&text, Vec2::new(n_cpu_ram_x, n_cpu_ram_y));
-    //         n_cpu_ram_y = n_cpu_ram_y + MainState::OFFSET_Y;
-    //     }
-    // }
+        for _ in 0..n_rows
+        {
+            let mut s_offset: String = format!("${:04x}:", n_addr);
+            for _ in 0..n_cols
+            {
+                let mut data: u8 = 0;
+                self.bus.borrow_mut().cpu_read(n_addr, &mut data);
+                s_offset = s_offset + &format!(" {:02x}", data);
+                n_addr = n_addr + 1;
+            }
+            let text = Text::new(s_offset);
+            canvas.draw(&text, Vec2::new(n_cpu_ram_x, n_cpu_ram_y));
+            n_cpu_ram_y = n_cpu_ram_y + MainState::OFFSET_Y;
+        }
+    }
 
     fn draw_cpu(&mut self, x: f32, y: f32, canvas: &mut ggez::graphics::Canvas)
     {
@@ -167,45 +166,45 @@ impl MainState
 
     }
 
-    // fn draw_code(&mut self, x: f32, y: f32, n_lines: i32, canvas: &mut ggez::graphics::Canvas)
-    // {
-    //     let cpu = self.bus.borrow_mut().get_cpu();
+    fn draw_code(&mut self, x: f32, y: f32, n_lines: i32, canvas: &mut ggez::graphics::Canvas)
+    {
+        let cpu = self.bus.borrow_mut().get_cpu();
 
-    //     let mut before_keys: Vec<_> = self.map_asm.range((Bound::Unbounded, Bound::Excluded(cpu.borrow().get_pc())))
-    //                                             .rev()
-    //                                             .take((n_lines / 2) as usize)
-    //                                             .collect();
+        let mut before_keys: Vec<_> = self.map_asm.range((Bound::Unbounded, Bound::Excluded(cpu.borrow().get_pc())))
+                                                .rev()
+                                                .take((n_lines / 2) as usize)
+                                                .collect();
 
-    //     before_keys.reverse();
+        before_keys.reverse();
 
-    //     let after_keys: Vec<_> = self.map_asm.range((Bound::Excluded(cpu.borrow().get_pc()), Bound::Unbounded))
-    //         .take((n_lines / 2) as usize)
-    //         .collect();
+        let after_keys: Vec<_> = self.map_asm.range((Bound::Excluded(cpu.borrow().get_pc()), Bound::Unbounded))
+            .take((n_lines / 2) as usize)
+            .collect();
 
-    //     let mut num_offset: i32 = 0;
-    //     for (_, value) in before_keys
-    //     {
-    //         canvas.draw(&Text::new(value), Vec2::new(x, y + (MainState::OFFSET_Y * num_offset as f32)));
-    //         num_offset += 1;
-    //     }
+        let mut num_offset: i32 = 0;
+        for (_, value) in before_keys
+        {
+            canvas.draw(&Text::new(value), Vec2::new(x, y + (MainState::OFFSET_Y * num_offset as f32)));
+            num_offset += 1;
+        }
 
-    //     let inst = self.map_asm.get(&cpu.borrow().get_pc());
-    //     match inst
-    //     {
+        let inst = self.map_asm.get(&cpu.borrow().get_pc());
+        match inst
+        {
             
-    //         Some(s) => canvas.draw(&Text::new(s),
-    //             graphics::DrawParam::new().color(graphics::Color::CYAN).dest(Vec2::new(x, y + (MainState::OFFSET_Y * num_offset as f32)))),
-    //         None => ()
-    //     }
+            Some(s) => canvas.draw(&Text::new(s),
+                graphics::DrawParam::new().color(graphics::Color::CYAN).dest(Vec2::new(x, y + (MainState::OFFSET_Y * num_offset as f32)))),
+            None => ()
+        }
 
-    //     num_offset += 1;
+        num_offset += 1;
 
-    //     for (_, value) in after_keys
-    //     {
-    //         canvas.draw(&Text::new(value), Vec2::new(x, y + (MainState::OFFSET_Y * num_offset as f32)));
-    //         num_offset += 1;
-    //     }
-    // }
+        for (_, value) in after_keys
+        {
+            canvas.draw(&Text::new(value), Vec2::new(x, y + (MainState::OFFSET_Y * num_offset as f32)));
+            num_offset += 1;
+        }
+    }
 
     fn draw_oam(&mut self, x: f32, y: f32, n_lines: i32, canvas: &mut ggez::graphics::Canvas)
     {
@@ -372,13 +371,13 @@ impl event::EventHandler<ggez::GameError> for MainState
                 loop
                 {
                     self.clock_tick();
-                    if self.bus.borrow_mut().get_ppu().borrow().frame_complete()
+                    if self.ppu.as_ref().unwrap().borrow().frame_complete()
                     {
                         break;
                     }
                 }
 
-                self.bus.borrow_mut().get_ppu().borrow_mut().set_frame_complete(false);
+                self.ppu.as_ref().unwrap().borrow_mut().set_frame_complete(false);
             }
         }
         else
@@ -443,12 +442,6 @@ impl event::EventHandler<ggez::GameError> for MainState
             self.emulation_run = !self.emulation_run;
         }
 
-        if ctx.keyboard.is_key_just_pressed(ggez::input::keyboard::KeyCode::P)
-        {
-            self.selected_palette += 1;
-            self.selected_palette %= 7;
-        }
-
         self.process_controller_input(ctx);
         
         Ok(())
@@ -462,32 +455,14 @@ impl event::EventHandler<ggez::GameError> for MainState
             graphics::Color::from([0.0, 0.0, 1.0, 1.0]),
         );
 
-        // MainState::draw_cpu_ram(self, 2, 2, 0x0000, 16, 16, &mut canvas);
-        // MainState::draw_cpu_ram(self, 2, 250, 0x8000, 16, 16, &mut canvas);
-        MainState::draw_cpu(self, 525.0, 2.0, &mut canvas);
-        // MainState::draw_code(self, 525.0, 100.0, 27, &mut canvas);
-        MainState::draw_oam(self, 525.0, 100.0, 26, &mut canvas);
+        // Zero page
+        MainState::draw_cpu_ram(self, 10, 750, 0x0000, 16, 16, &mut canvas);
+        MainState::draw_cpu(self, 775.0, 2.0, &mut canvas);
+        MainState::draw_code(self, 775.0, 100.0, 26, &mut canvas);
+        MainState::draw_oam(self, 1175.0, 100.0, 26, &mut canvas);
 
         let ppu = self.bus.borrow_mut().get_ppu();
-
-        // TODO: Stopped here, looks like the nametables aren't correct under the covers.
-        // let mut x = 0;
-        // let mut y = 0;
-
-        // while y < 30
-        // {
-        //     while x < 32
-        //     {
-        //         let output = format!("{:02x}", ppu.borrow_mut().get_name_table()[0][y * 32 + x]);
-        //         canvas.draw(&Text::new(output), Vec2::new((x as f32) * 16.0, (y as f32) * 16.0));
-        //         x += 1;
-        //     }
-
-        //     x = 0;
-        //     y += 1;
-        // }
-
-        ppu.borrow_mut().render(ctx, &mut canvas, self.selected_palette);
+        ppu.borrow_mut().render(ctx, &mut canvas, 3.0);
         canvas.finish(ctx)?;
         Ok(())
     }
@@ -497,7 +472,7 @@ fn main() -> GameResult
 {
     let (ctx, event_loop) = ggez::ContextBuilder::new("singularity-emu", "jsmrcina")
         .window_setup(ggez::conf::WindowSetup::default().title("Singularity Emu"))
-        .window_mode(ggez::conf::WindowMode::default().dimensions(1280.0, 1024.0))
+        .window_mode(ggez::conf::WindowMode::default().dimensions(1440.0, 1080.0))
         .build()?;
     let state = MainState::new()?;
     event::run(ctx, event_loop, state);

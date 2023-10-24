@@ -1278,7 +1278,7 @@ impl Cpu6502
         return self.cycles == 0;
     }
 
-    pub fn disassemble(&mut self, n_start: u16, n_end: u16) -> BTreeMap<u16, String>
+    pub fn disassemble(&mut self, n_start: u16, n_end: u16, include_state: bool) -> BTreeMap<u16, String>
     {
         let mut map = BTreeMap::new();
 
@@ -1518,12 +1518,15 @@ impl Cpu6502
                 instruction += &String::from(format!(" ${:04X}", addr as i32 + (value as i8) as i32));
             }
 
-            // Pad to 49 characters
-            let num_spaces = 47 - instruction.len();
-            let repeated_blanks = ' '.to_string().repeat(num_spaces);
-            instruction += &repeated_blanks;
+            if include_state
+            {
+                // Pad to 49 characters
+                let num_spaces = 47 - instruction.len();
+                let repeated_blanks = ' '.to_string().repeat(num_spaces);
+                instruction += &repeated_blanks;
+                instruction += &String::from(format!(" {:?}", self));
+            }
 
-            instruction += &String::from(format!(" {:?}", self));
             map.insert(line_addr, instruction);
         }
 

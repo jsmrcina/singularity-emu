@@ -97,6 +97,11 @@ impl Cart
             mirror_mode: MirrorMode::Horizontal
         };
 
+        if header.mapper_1 & 0x01 == 0x01
+        {
+            s.mirror_mode = MirrorMode::Vertical;
+        }
+
         let file_type: u8 = 1;
 
         if file_type == 1
