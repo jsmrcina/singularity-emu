@@ -32,8 +32,8 @@ impl BusSystems
     {
         let s: System = System {
             _name: name,
-            priority: priority,
-            sys: sys
+            priority,
+            sys
         };
 
         if address_range.0 > address_range.1
@@ -58,8 +58,13 @@ impl BusSystems
 
         // Sort by priority, let the lowest priority handle the operation
         matching_systems.sort_by(|a, b| a.priority.cmp(&b.priority));
-
-        return matching_systems;
+        matching_systems
     }
 
+}
+
+impl Default for BusSystems {
+    fn default() -> Self {
+        BusSystems::new()
+    }
 }

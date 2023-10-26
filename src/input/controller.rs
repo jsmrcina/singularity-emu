@@ -49,7 +49,13 @@ impl NesController
     {
         let bit: bool = (self.snapshot_state & 0x80) > 0;
         self.snapshot_state <<= 1;
-        return bit;
+        bit
+    }
+}
+
+impl Default for NesController {
+    fn default() -> Self {
+        NesController::new()
     }
 }
 
@@ -63,7 +69,7 @@ impl ReadWrite for NesController
         }
 
         self.snapshot();
-        return true;
+        true
     }
 
     fn cpu_read(&mut self, address: u16, data: &mut u8) -> bool
@@ -74,7 +80,7 @@ impl ReadWrite for NesController
         }
 
         *data = self.read_snapshot_bit() as u8;
-        return true;
+        true
     }
 
     fn ppu_write(&mut self, _: u16, _: u8) -> bool

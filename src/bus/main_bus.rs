@@ -12,77 +12,7 @@ use crate::bus::bus_systems::BusSystems;
 
 use crate::input::controller::NesController;
 
-
-pub struct DmaInfo
-{
-    page: u8,
-    addr: u8,
-    data: u8,
-    transfer: bool,
-    sync: bool
-}
-
-impl DmaInfo
-{
-    pub fn new() -> Self
-    {
-        DmaInfo { page: 0, addr: 0, data: 0, transfer: false, sync: true }
-    }
-
-    pub fn is_transfer_in_progress(&self) -> bool
-    {
-        return self.transfer;
-    }
-
-    pub fn set_transfer_in_progress(&mut self, transfer: bool)
-    {
-        self.transfer = transfer;
-    }
-
-    pub fn is_sync_needed(&self) -> bool
-    {
-        return self.sync;
-    }
-
-    pub fn set_sync_needed(&mut self, sync: bool)
-    {
-        self.sync = sync;
-    }
-
-    pub fn get_data(&self) -> u8 { return self.data; }
-    pub fn get_addr(&self) -> u8 { return self.addr; }
-    pub fn get_page(&self) -> u8 { return self.page; }
-
-    pub fn set_data(&mut self, data: u8) { self.data = data; }
-    pub fn set_addr(&mut self, addr: u8) { self.addr = addr; }
-    pub fn set_page(&mut self, page: u8) { self.page = page; }
-}
-
-impl ReadWrite for DmaInfo
-{
-    fn cpu_write(&mut self, _: u16, data: u8) -> bool
-    {
-        self.set_page(data);
-        self.set_addr(0);
-        self.set_transfer_in_progress(true);
-        return true;
-    }
-
-    fn cpu_read(&mut self, _: u16, _: &mut u8) -> bool
-    {
-        return false;
-    }
-
-    fn ppu_write(&mut self, _: u16, _: u8) -> bool
-    {
-        panic!("Cannot PPU write to DmaInfo");
-    }
-
-    fn ppu_read(&self, _: u16, _: &mut u8) -> bool
-    {
-        panic!("Cannot PPU read from DmaInfo");
-    }
-}
+use super::dma_info::DmaInfo;
 
 pub struct MainBus
 {
@@ -126,8 +56,7 @@ impl MainBus
 
         let controller_2_trait_object = Rc::clone(&s.controllers[1]) as Rc<RefCell<dyn ReadWrite>>;
         s.bus_systems.add_system((0x4017, 0x4017), "CONTROLLER_2".to_string(), 1, controller_2_trait_object);
-
-        return s;
+        s
     }
 
     pub fn insert_cartridge(&mut self, cartridge: Rc<RefCell<Cart>>)
@@ -142,37 +71,37 @@ impl MainBus
     
     pub fn get_cpu(&mut self) -> Rc<RefCell<Cpu6502>>
     {
-        return Rc::clone(&self.cpu);
+        Rc::clone(&self.cpu)
     }
 
     pub fn get_ppu(&mut self) -> Rc<RefCell<Ppu2c02>>
     {
-        return Rc::clone(&self.ppu);
+        Rc::clone(&self.ppu)
     }
 
     pub fn get_dma_info(&mut self) -> Rc<RefCell<DmaInfo>>
     {
-        return Rc::clone(&self.dma_info);
+        Rc::clone(&self.dma_info)
     }
 
     pub fn is_dma_transfer_in_progress(&self) -> bool
     {
-        return self.dma_info.borrow().is_transfer_in_progress();
+        self.dma_info.borrow().is_transfer_in_progress()
     }
 
     pub fn get_clock_counter(&self) -> u32
     {
-        return self.system_clock_counter;
+        self.system_clock_counter
     }
 
     pub fn get_controller(&mut self, index: usize) -> Rc<RefCell<NesController>>
     {
-        return Rc::clone(&self.controllers[index]);
+        Rc::clone(&self.controllers[index])
     }
 
     pub fn get_system_clock_counter(&self) -> u32
     {
-        return self.system_clock_counter;
+        self.system_clock_counter
     }
 
     pub fn increment_clock_counter(&mut self)
@@ -210,7 +139,7 @@ impl ReadWrite for MainBus
         // }
 
         // If not handled, we already panicked
-        return true;
+        true
     }
 
     fn cpu_read(&mut self, address: u16, data: &mut u8) -> bool
@@ -227,7 +156,7 @@ impl ReadWrite for MainBus
             }
         }
 
-        return handled;
+        handled
     }
 
     fn ppu_write(&mut self, _: u16, _: u8) -> bool
@@ -238,5 +167,11 @@ impl ReadWrite for MainBus
     fn ppu_read(&self, _: u16, _: &mut u8) -> bool
     {
         panic!("Main bus cannot be read by PPU");   
+    }
+}
+
+impl Default for MainBus {
+    fn default() -> Self {
+        MainBus::new()
     }
 }

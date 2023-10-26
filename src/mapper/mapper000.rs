@@ -11,7 +11,7 @@ impl Mapper000
     pub fn new(prg_banks: u8, chr_banks: u8) -> Self
     {
         Mapper000 {
-            prg_banks: prg_banks,
+            prg_banks,
             _chr_banks: chr_banks
         }
     }
@@ -37,7 +37,7 @@ impl MapperTrait for Mapper000
             return true;
         }
 
-        return false;
+        false
     }
 
     fn cpu_map_write(&self, address: u16, mapped_addr: &mut u32) -> bool
@@ -58,7 +58,7 @@ impl MapperTrait for Mapper000
             return true;
         }
 
-        return false;
+        false
     }
 
     fn ppu_map_read(&self, address: u16, mapped_addr: &mut u32) -> bool
@@ -69,11 +69,11 @@ impl MapperTrait for Mapper000
             return true;
         }
 
-        return false;
+        false
     }
 
     fn ppu_map_write(&self, _: u16, _: &mut u32) -> bool
     {
-        return false;
+        false
     }
 }

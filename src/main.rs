@@ -3,15 +3,18 @@ use cartridge::cart::Cart;
 use cpu::cpu6502::Cpu6502;
 use gfx::ppu2c02::Ppu2c02;
 use input::controller::NesKey;
+use sound::sound_engine::SoundEngine;
 use traits::ReadWrite;
 use crate::cpu::cpu6502::Flags6502;
 use crate::traits::Clockable;
 
+use std::sync::{Arc, Mutex};
 use std::cell::RefCell;
 use std::ops::Bound;
 use std::rc::Rc;
 use std::collections::BTreeMap;
 
+// Game engine
 use ggez::event;
 use ggez::graphics::{self};
 use ggez::{Context, GameResult};
@@ -26,6 +29,7 @@ pub mod mapper;
 pub mod gfx;
 pub mod cartridge;
 pub mod input;
+pub mod sound;
 
 struct MainState
 {
@@ -34,7 +38,9 @@ struct MainState
     ppu: Option<Rc<RefCell<Ppu2c02>>>,
     map_asm: BTreeMap<u16, String>,
     emulation_run: bool,
-    residual_time: f32
+    residual_time: f32,
+    sound_engine: Arc<Mutex<SoundEngine>>,
+    sound_thread: Option<cpal::Stream>
 }
 
 impl MainState
@@ -48,7 +54,9 @@ impl MainState
             ppu: None,
             map_asm: BTreeMap::new(),
             emulation_run: false,
-            residual_time: 0.0
+            residual_time: 0.0,
+            sound_engine: Arc::new(Mutex::new(SoundEngine::new())),
+            sound_thread: None
         };
 
         // Link the CPU to the BUS
@@ -97,11 +105,11 @@ impl MainState
                 let mut data: u8 = 0;
                 self.bus.borrow_mut().cpu_read(n_addr, &mut data);
                 s_offset = s_offset + &format!(" {:02x}", data);
-                n_addr = n_addr + 1;
+                n_addr += 1;
             }
             let text = Text::new(s_offset);
             canvas.draw(&text, Vec2::new(n_cpu_ram_x, n_cpu_ram_y));
-            n_cpu_ram_y = n_cpu_ram_y + MainState::OFFSET_Y;
+            n_cpu_ram_y += MainState::OFFSET_Y;
         }
     }
 
@@ -211,7 +219,7 @@ impl MainState
         for i in 0..(n_lines as u8)
         {
             let ppu = self.bus.borrow_mut().get_ppu();
-            let byte_0 = ppu.borrow_mut().get_oam_memory_at_addr(i * 4 + 0);
+            let byte_0 = ppu.borrow_mut().get_oam_memory_at_addr(i * 4);
             let byte_1 = ppu.borrow_mut().get_oam_memory_at_addr(i * 4 + 1);
             let byte_2 = ppu.borrow_mut().get_oam_memory_at_addr(i * 4 + 2);
             let byte_3 = ppu.borrow_mut().get_oam_memory_at_addr(i * 4 + 3);
@@ -443,6 +451,9 @@ impl event::EventHandler<ggez::GameError> for MainState
         }
 
         self.process_controller_input(ctx);
+
+        // TODO: For testing, remove eventually
+        self.sound_engine.lock().unwrap().vary_freq();
         
         Ok(())
     }
@@ -452,7 +463,7 @@ impl event::EventHandler<ggez::GameError> for MainState
 
         let mut canvas = graphics::Canvas::from_frame(
             ctx,
-            graphics::Color::from([0.0, 0.0, 1.0, 1.0]),
+            graphics::Color::from([0.0, 0.0, 0.0, 1.0]),
         );
 
         // Zero page
@@ -474,6 +485,9 @@ fn main() -> GameResult
         .window_setup(ggez::conf::WindowSetup::default().title("Singularity Emu"))
         .window_mode(ggez::conf::WindowMode::default().dimensions(1440.0, 1080.0))
         .build()?;
-    let state = MainState::new()?;
+    let mut state = MainState::new()?;
+
+    state.sound_thread = Some(SoundEngine::initialize(state.sound_engine.clone()));
+
     event::run(ctx, event_loop, state);
 }

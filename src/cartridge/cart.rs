@@ -123,14 +123,12 @@ impl Cart
             _ => panic!("Invalid mapper type, not supported")
         };
 
-
-
-        return Ok(s);
+        Ok(s)
     }
 
     pub fn get_mirror_mode(&self) -> MirrorMode
     {
-        return self.mirror_mode;
+        self.mirror_mode
     }
 
 }
@@ -140,10 +138,9 @@ impl ReadWrite for Cart
     fn cpu_write(&mut self, address: u16, data: u8) -> bool
     {
         let mut mapped_addr: u32 = 0;
-        let handled;
-        match &self.mapper
+        let handled = match &self.mapper
         {
-            Some(x) => handled = x.borrow().cpu_map_write(address, &mut mapped_addr),
+            Some(x) => x.borrow().cpu_map_write(address, &mut mapped_addr),
             None => panic!("No mapper set for cartridge")
         };
 
@@ -152,16 +149,15 @@ impl ReadWrite for Cart
             self.prg_memory[mapped_addr as usize] = data;
         }
 
-        return handled;
+        handled
     }
 
     fn cpu_read(&mut self, address: u16, data: &mut u8) -> bool
     {
         let mut mapped_addr: u32 = 0;
-        let handled;
-        match &self.mapper
+        let handled = match &self.mapper
         {
-            Some(x) => handled = x.borrow().cpu_map_read(address, &mut mapped_addr),
+            Some(x) => x.borrow().cpu_map_read(address, &mut mapped_addr),
             None => panic!("No mapper set for cartridge")
         };
 
@@ -170,16 +166,15 @@ impl ReadWrite for Cart
             *data = self.prg_memory[mapped_addr as usize];
         }
 
-        return handled;
+        handled
     }
 
     fn ppu_write(&mut self, address: u16, data: u8) -> bool
     {
         let mut mapped_addr: u32 = 0;
-        let handled;
-        match &self.mapper
+        let handled = match &self.mapper
         {
-            Some(x) => handled = x.borrow().ppu_map_write(address, &mut mapped_addr),
+            Some(x) => x.borrow().ppu_map_write(address, &mut mapped_addr),
             None => panic!("No mapper set for cartridge")
         };
 
@@ -188,16 +183,15 @@ impl ReadWrite for Cart
             self.chr_memory[mapped_addr as usize] = data;
         }
 
-        return handled;
+        handled
     }
 
     fn ppu_read(&self, address: u16, data: &mut u8) -> bool
     {
         let mut mapped_addr: u32 = 0;
-        let handled;
-        match &self.mapper
+        let handled =match &self.mapper
         {
-            Some(x) => handled = x.borrow().ppu_map_read(address, &mut mapped_addr),
+            Some(x) => x.borrow().ppu_map_read(address, &mut mapped_addr),
             None => panic!("No mapper set for cartridge")
         };
 
@@ -205,6 +199,7 @@ impl ReadWrite for Cart
         {
             *data = self.chr_memory[mapped_addr as usize];
         }
-        return handled;
+        
+        handled
     }
 }

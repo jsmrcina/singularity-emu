@@ -15,8 +15,8 @@ impl Ram
         {
             // Our vector will never grow past mirror size + 1
             buffer: vec![0; (mirror_size + 1) as usize],
-            size: size,
-            mirror_size: mirror_size
+            size,
+            mirror_size
         }
     }
 }
@@ -34,7 +34,7 @@ impl ReadWrite for Ram
         let mirror_address = address & self.mirror_size;
 
         self.buffer[mirror_address as usize] = data;
-        return true;
+        true
     }
 
     fn cpu_read(&mut self, address: u16, data: &mut u8) -> bool
@@ -48,7 +48,7 @@ impl ReadWrite for Ram
         let mirror_address = address & self.mirror_size;
 
         *data = self.buffer[mirror_address as usize];
-        return true;
+        true
     }
 
     fn ppu_write(&mut self, _: u16, _: u8) -> bool
