@@ -1,5 +1,5 @@
 use crate::bus::main_bus::MainBus;
-use crate::traits::{ReadWrite, Clockable};
+use crate::traits::{ReadWrite, Clockable, Resettable};
 use crate::cartridge::cart::Cart;
 use std::fmt;
 use std::rc::Rc;
@@ -1533,31 +1533,6 @@ impl Cpu6502
         return map;
     }
 
-    pub fn reset(&mut self)
-    {
-        self.addr_abs = 0xFFFC;
-        let mut lo: u8 = 0;
-        self.cpu_read(self.addr_abs + 0, &mut lo);
-        let mut hi: u8 = 0;
-        self.cpu_read(self.addr_abs + 1, &mut hi);
-    
-        self.pc = ((hi as u16) << 8) | lo as u16;
-
-        self.a = 0;
-        self.x = 0;
-        self.y = 0;
-        self.stkp = 0xFD;
-
-        self.status = Flags6502::U as u8 | Flags6502::I as u8;
-
-        self.addr_rel = 0x0000;
-        self.addr_abs = 0x0000;
-        self.fetched_data = 0x00;
-
-        self.cycles = 8;
-        self.total_cycles = -1;
-    }
-
     fn perform_irq(&mut self, pc_read_addr: u16, num_cycles: u8)
     {
         // Save the PC to the stack
@@ -1607,6 +1582,35 @@ impl Cpu6502
         }
 
         return self.fetched_data;
+    }
+
+}
+
+impl Resettable for Cpu6502
+{
+    fn reset(&mut self)
+    {
+        self.addr_abs = 0xFFFC;
+        let mut lo: u8 = 0;
+        self.cpu_read(self.addr_abs + 0, &mut lo);
+        let mut hi: u8 = 0;
+        self.cpu_read(self.addr_abs + 1, &mut hi);
+    
+        self.pc = ((hi as u16) << 8) | lo as u16;
+
+        self.a = 0;
+        self.x = 0;
+        self.y = 0;
+        self.stkp = 0xFD;
+
+        self.status = Flags6502::U as u8 | Flags6502::I as u8;
+
+        self.addr_rel = 0x0000;
+        self.addr_abs = 0x0000;
+        self.fetched_data = 0x00;
+
+        self.cycles = 8;
+        self.total_cycles = -1;
     }
 
 }

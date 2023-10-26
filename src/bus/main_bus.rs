@@ -1,6 +1,7 @@
 use std::rc::Rc;
 use std::cell::RefCell;
 
+use crate::sound::apu2a03::Apu2a03;
 use crate::traits::ReadWrite;
 
 use crate::memory::ram::Ram;
@@ -20,6 +21,7 @@ pub struct MainBus
     cpu_ram: Rc<RefCell<Ram>>,
     ppu: Rc<RefCell<Ppu2c02>>,
     cpu: Rc<RefCell<Cpu6502>>,
+    apu: Rc<RefCell<Apu2a03>>,
     cartridge: Option<Rc<RefCell<Cart>>>,
     controllers: [Rc<RefCell<NesController>>; 2],
     system_clock_counter: u32,
@@ -34,8 +36,9 @@ impl MainBus
         {
             bus_systems: BusSystems::new(),
             cpu_ram: Rc::new(RefCell::new(Ram::new(0x1FFF, 0x07FF))),
-            cpu: Rc::new(RefCell::new(Cpu6502::new())),
             ppu: Rc::new(RefCell::new(Ppu2c02::new())),
+            cpu: Rc::new(RefCell::new(Cpu6502::new())),
+            apu: Rc::new(RefCell::new(Apu2a03::new())),
             cartridge: None,
             controllers: [ Rc::new(RefCell::new(NesController::new())), Rc::new(RefCell::new(NesController::new())) ],
             system_clock_counter: 0,
@@ -47,6 +50,18 @@ impl MainBus
 
         let ppu_trait_object = Rc::clone(&s.ppu) as Rc<RefCell<dyn ReadWrite>>;
         s.bus_systems.add_system((0x2000, 0x3FFF), "PPU_RAM".to_string(), 1, ppu_trait_object);
+
+        // APU handles several ranges of addresses
+        {
+            let mut apu_trait_object = Rc::clone(&s.apu) as Rc<RefCell<dyn ReadWrite>>;
+            s.bus_systems.add_system((0x4000, 0x4013), "APU_CHANNELS".to_string(), 1, apu_trait_object);
+
+            apu_trait_object = Rc::clone(&s.apu) as Rc<RefCell<dyn ReadWrite>>;
+            s.bus_systems.add_system((0x4015, 0x4015), "APU_ENABLE".to_string(), 1, apu_trait_object);
+
+            apu_trait_object = Rc::clone(&s.apu) as Rc<RefCell<dyn ReadWrite>>;
+            s.bus_systems.add_system((0x4017, 0x4017), "APU_FRAME".to_string(), 1, apu_trait_object);
+        }
 
         let dma_trait_object = Rc::clone(&s.dma_info) as Rc<RefCell<dyn ReadWrite>>;
         s.bus_systems.add_system((0x4014, 0x4014), "DMA".to_string(), 1, dma_trait_object);
@@ -77,6 +92,11 @@ impl MainBus
     pub fn get_ppu(&mut self) -> Rc<RefCell<Ppu2c02>>
     {
         Rc::clone(&self.ppu)
+    }
+
+    pub fn get_apu(&mut self) -> Rc<RefCell<Apu2a03>>
+    {
+        Rc::clone(&self.apu)
     }
 
     pub fn get_dma_info(&mut self) -> Rc<RefCell<DmaInfo>>
@@ -122,21 +142,21 @@ impl ReadWrite for MainBus
     {
         let matching_systems = self.bus_systems.get_matching_systems(address);
 
-        let mut _handled: bool = false;
+        let mut handled: bool = false;
         for system in matching_systems
         {
-            _handled = system.sys.borrow_mut().cpu_write(address, data);
-            if _handled
+            handled = system.sys.borrow_mut().cpu_write(address, data);
+            if handled
             {
                 break;
             }
         }
 
         // Add back once we have systems covering the whole address range
-        // if !handled
-        // {
-        //     panic!("Issued a write and no system handled it");
-        // }
+        if !handled
+        {
+            panic!("Issued a write and no system handled it");
+        }
 
         // If not handled, we already panicked
         true

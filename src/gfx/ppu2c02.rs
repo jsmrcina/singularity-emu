@@ -2,7 +2,7 @@ use std::{cell::RefCell, rc::Rc};
 
 use ggez::{graphics::{self, ImageFormat, Sampler}, Context};
 
-use crate::{traits::{ReadWrite, Clockable}, cartridge::cart::Cart, cartridge::cart::MirrorMode};
+use crate::{traits::{ReadWrite, Clockable, Resettable}, cartridge::cart::Cart, cartridge::cart::MirrorMode};
 
 use ggez::glam::*;
 
@@ -434,10 +434,13 @@ impl Ppu2c02
 
     pub fn get_name_table(&self) -> Box<[[u8; 1024]; 2]>
     {
-        return self.nametables.clone();
+        self.nametables.clone()
     }
+}
 
-    pub fn reset(&mut self)
+impl Resettable for Ppu2c02
+{
+    fn reset(&mut self)
     {
         self.ctrl.set_field(0);
         self.mask.set_field(0);
@@ -453,7 +456,6 @@ impl Ppu2c02
         self.vram_addr.set_field(0);
         self.tram_addr.set_field(0);
     }
-
 }
 
 impl ReadWrite for Ppu2c02

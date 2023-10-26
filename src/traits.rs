@@ -18,3 +18,8 @@ pub trait Clockable
 {
     fn clock_tick(&mut self);
 }
+
+pub trait Resettable
+{
+    fn reset(&mut self);
+}

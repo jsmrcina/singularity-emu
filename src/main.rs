@@ -2,11 +2,13 @@ use bus::main_bus::MainBus;
 use cartridge::cart::Cart;
 use cpu::cpu6502::Cpu6502;
 use gfx::ppu2c02::Ppu2c02;
+use sound::apu2a03::Apu2a03;
 use input::controller::NesKey;
 use sound::sound_engine::SoundEngine;
-use traits::ReadWrite;
+use traits::{ReadWrite, Resettable};
 use crate::cpu::cpu6502::Flags6502;
 use crate::traits::Clockable;
+use std::sync::Once;
 
 use std::sync::{Arc, Mutex};
 use std::cell::RefCell;
@@ -36,34 +38,29 @@ struct MainState
     bus: Rc<RefCell<MainBus>>,
     cpu: Option<Rc<RefCell<Cpu6502>>>,
     ppu: Option<Rc<RefCell<Ppu2c02>>>,
+    apu: Option<Rc<RefCell<Apu2a03>>>,
     map_asm: BTreeMap<u16, String>,
     emulation_run: bool,
     residual_time: f32,
-    sound_engine: Arc<Mutex<SoundEngine>>,
+    sound_engine: Option<Arc<Mutex<SoundEngine>>>,
     sound_thread: Option<cpal::Stream>
 }
 
+static mut INSTANCE: Option<MainState> = None;
+static INIT: Once = Once::new();
+
+
 impl MainState
 {
-    fn new() -> GameResult<MainState>
+    fn initialize(&mut self)
     {
-        let mut s = MainState
-        {
-            bus: Rc::new(RefCell::new(MainBus::new())),
-            cpu: None,
-            ppu: None,
-            map_asm: BTreeMap::new(),
-            emulation_run: false,
-            residual_time: 0.0,
-            sound_engine: Arc::new(Mutex::new(SoundEngine::new())),
-            sound_thread: None
-        };
+        self.sound_engine = Some(Arc::new(Mutex::new(SoundEngine::new(MainState::emulator_tick))));
 
         // Link the CPU to the BUS
         // TODO: Better to move this?
         // TODO: Revert back to using the trait once CPU is debugged
-        let bus_trait_object = Rc::clone(&s.bus);// as Rc<RefCell<dyn ReadWrite>>;
-        s.bus.borrow_mut().get_cpu().borrow_mut().set_bus(Some(bus_trait_object));
+        let bus_trait_object = Rc::clone(&self.bus);// as Rc<RefCell<dyn ReadWrite>>;
+        self.bus.borrow_mut().get_cpu().borrow_mut().set_bus(Some(bus_trait_object));
 
         let cart = Cart::new("data\\super mario.nes".to_string());
         match cart
@@ -71,7 +68,7 @@ impl MainState
             Ok(x) =>
             {
                 let cart_wrapper = Rc::new(RefCell::new(x));
-                s.bus.borrow_mut().insert_cartridge(cart_wrapper);
+                self.bus.borrow_mut().insert_cartridge(cart_wrapper);
             },
             _ =>
             {
@@ -80,13 +77,36 @@ impl MainState
         }
 
         // Dissemble code into our main state so we can render it\
-        let cpu = s.bus.borrow_mut().get_cpu();
-        s.map_asm = cpu.borrow_mut().disassemble(0x0000, 0xFFFF, false);
+        let cpu = self.bus.borrow_mut().get_cpu();
+        self.map_asm = cpu.borrow_mut().disassemble(0x0000, 0xFFFF, false);
 
         // Reset the CPU
-        s.reset();
+        self.reset();
+    }
 
-        Ok(s)
+    fn get_instance() -> &'static mut MainState
+    {
+        // Required to store the raw mutable pointer
+        unsafe
+        {
+            INIT.call_once(|| {
+                INSTANCE = Some(MainState
+                {
+                    bus: Rc::new(RefCell::new(MainBus::new())),
+                    cpu: None,
+                    ppu: None,
+                    apu: None,
+                    map_asm: BTreeMap::new(),
+                    emulation_run: false,
+                    residual_time: 0.0,
+                    sound_engine: None,
+                    sound_thread: None
+                });
+
+                (*INSTANCE.as_mut().unwrap()).initialize();
+            });
+            INSTANCE.as_mut().unwrap()
+        }
     }
 
     const OFFSET_X: f32 = 16.0;
@@ -234,20 +254,6 @@ impl MainState
             canvas.draw(&Text::new(s), Vec2::new(x, y + (i as f32 * MainState::OFFSET_Y)));
         }
     }
-    
-    fn reset(&mut self)
-    {
-        // Reset the main bus
-        self.bus.borrow_mut().reset();
-
-        // Reset the CPU
-        self.cpu = Some(self.bus.borrow_mut().get_cpu());
-        self.cpu.as_ref().unwrap().borrow_mut().reset();
-
-        // Reset the PPU
-        self.ppu = Some(self.bus.borrow_mut().get_ppu());
-        self.ppu.as_ref().unwrap().borrow_mut().reset();
-    }
 
     fn process_controller_input(&mut self, ctx: &mut Context)
     {
@@ -295,75 +301,8 @@ impl MainState
         }
     }
 
-}
-
-impl Clockable for MainState
-{
-    fn clock_tick(&mut self)
-    {
-        let cpu = self.cpu.as_ref().unwrap();
-        let ppu = self.ppu.as_ref().unwrap();
-        let clock_counter = self.bus.borrow().get_clock_counter();
-
-        ppu.borrow_mut().clock_tick();
-        if clock_counter % 3 == 0
-        {
-            if self.bus.borrow().is_dma_transfer_in_progress()
-            {
-                let dma_info_ptr = self.bus.borrow_mut().get_dma_info();
-                let mut dma_info = dma_info_ptr.borrow_mut();
-
-                if dma_info.is_sync_needed()
-                {
-                    // Since DMA transfer can only be initiated on an even clock cycle, we synchronize here
-                    if self.bus.borrow_mut().get_clock_counter() % 2 == 1
-                    {
-                        dma_info.set_sync_needed(false);
-                    }
-                }
-                else
-                {
-                    // On even cycles, read from the bus (could be CPU, cart, etc.)
-                    // On odd cycles, write to the PPU
-                    if self.bus.borrow_mut().get_clock_counter() % 2 == 0
-                    {
-                        let mut data: u8 = 0;
-                        self.bus.borrow_mut().cpu_read((dma_info.get_page() as u16) << 8 | (dma_info.get_addr() as u16), &mut data);
-                        dma_info.set_data(data);
-                    }
-                    else
-                    {
-                        ppu.borrow_mut().set_oam_memory_at_addr(dma_info.get_addr(), dma_info.get_data());
-                        let new_addr = dma_info.get_addr().wrapping_add(1);
-                        dma_info.set_addr(new_addr);
-
-                        if new_addr == 0x00
-                        {
-                            dma_info.set_transfer_in_progress(false);
-                            dma_info.set_sync_needed(true);
-                        }
-                    }
-                }
-            }
-            else
-            {
-                cpu.borrow_mut().clock_tick();
-            }
-        }
-
-        if ppu.borrow().get_nmi()
-        {
-            ppu.borrow_mut().set_nmi(false);
-            cpu.borrow_mut().nmi();
-        }
-
-        self.bus.borrow_mut().increment_clock_counter();
-    }
-}
-
-impl event::EventHandler<ggez::GameError> for MainState
-{
-    fn update(&mut self, ctx: &mut Context) -> GameResult
+    // For debugging purposes
+    pub fn emulator_update_without_audio(&mut self, ctx: &mut Context) -> GameResult
     {
         if self.emulation_run
         {
@@ -453,9 +392,149 @@ impl event::EventHandler<ggez::GameError> for MainState
         self.process_controller_input(ctx);
 
         // TODO: For testing, remove eventually
-        self.sound_engine.lock().unwrap().vary_freq();
+        self.sound_engine.as_mut().unwrap().lock().unwrap().vary_freq();
         
         Ok(())
+    }
+
+    pub fn emulator_update_with_audio(&mut self, ctx: &mut Context) -> GameResult
+    {
+        if ctx.keyboard.is_key_just_pressed(ggez::input::keyboard::KeyCode::R)
+        {
+            self.reset();
+        }
+
+        if ctx.keyboard.is_key_just_pressed(ggez::input::keyboard::KeyCode::Space)
+        {
+            self.emulation_run = !self.emulation_run;
+        }
+
+        self.process_controller_input(ctx);
+
+        // TODO: For testing, remove eventually
+        // self.sound_engine.lock().unwrap().vary_freq();
+        
+        Ok(())
+    }
+
+    pub fn emulator_tick()
+    {
+        MainState::get_instance().clock_tick();
+    }
+
+}
+
+impl Clockable for MainState
+{
+    fn clock_tick(&mut self)
+    {
+        let cpu = self.cpu.as_ref().unwrap();
+        let ppu = self.ppu.as_ref().unwrap();
+        let apu = self.apu.as_ref().unwrap();
+        let clock_counter = self.bus.borrow().get_clock_counter();
+
+        ppu.borrow_mut().clock_tick();
+
+        apu.borrow_mut().clock_tick();
+
+        if clock_counter % 3 == 0
+        {
+            if self.bus.borrow().is_dma_transfer_in_progress()
+            {
+                let dma_info_ptr = self.bus.borrow_mut().get_dma_info();
+                let mut dma_info = dma_info_ptr.borrow_mut();
+
+                if dma_info.is_sync_needed()
+                {
+                    // Since DMA transfer can only be initiated on an even clock cycle, we synchronize here
+                    if self.bus.borrow_mut().get_clock_counter() % 2 == 1
+                    {
+                        dma_info.set_sync_needed(false);
+                    }
+                }
+                else
+                {
+                    // On even cycles, read from the bus (could be CPU, cart, etc.)
+                    // On odd cycles, write to the PPU
+                    if self.bus.borrow_mut().get_clock_counter() % 2 == 0
+                    {
+                        let mut data: u8 = 0;
+                        self.bus.borrow_mut().cpu_read((dma_info.get_page() as u16) << 8 | (dma_info.get_addr() as u16), &mut data);
+                        dma_info.set_data(data);
+                    }
+                    else
+                    {
+                        ppu.borrow_mut().set_oam_memory_at_addr(dma_info.get_addr(), dma_info.get_data());
+                        let new_addr = dma_info.get_addr().wrapping_add(1);
+                        dma_info.set_addr(new_addr);
+
+                        if new_addr == 0x00
+                        {
+                            dma_info.set_transfer_in_progress(false);
+                            dma_info.set_sync_needed(true);
+                        }
+                    }
+                }
+            }
+            else
+            {
+                cpu.borrow_mut().clock_tick();
+            }
+        }
+
+        // Synchronize with audio
+        self.sound_engine.as_mut().unwrap().lock().unwrap().clock_tick();
+
+        if ppu.borrow().get_nmi()
+        {
+            ppu.borrow_mut().set_nmi(false);
+            cpu.borrow_mut().nmi();
+        }
+
+        self.bus.borrow_mut().increment_clock_counter();
+    }
+}
+
+impl Resettable for MainState
+{
+    fn reset(&mut self)
+    {
+        // Reset the main bus
+        self.bus.borrow_mut().reset();
+
+        // Reset the CPU
+        self.cpu = Some(self.bus.borrow_mut().get_cpu());
+        self.cpu.as_ref().unwrap().borrow_mut().reset();
+
+        // Reset the PPU
+        self.ppu = Some(self.bus.borrow_mut().get_ppu());
+        self.ppu.as_ref().unwrap().borrow_mut().reset();
+
+        // Reset the APU
+        self.apu = Some(self.bus.borrow_mut().get_apu());
+        self.apu.as_ref().unwrap().borrow_mut().reset();
+    }
+}
+
+struct EventHandlingState
+{
+
+}
+
+impl EventHandlingState
+{
+    pub fn new() -> Self
+    {
+        EventHandlingState {  }
+    }
+}
+
+impl event::EventHandler<ggez::GameError> for EventHandlingState
+{
+
+    fn update(&mut self, ctx: &mut Context) -> GameResult
+    {
+        MainState::get_instance().emulator_update_with_audio(ctx)
     }
 
     fn draw(&mut self, ctx: &mut Context) -> GameResult
@@ -467,12 +546,12 @@ impl event::EventHandler<ggez::GameError> for MainState
         );
 
         // Zero page
-        MainState::draw_cpu_ram(self, 10, 750, 0x0000, 16, 16, &mut canvas);
-        MainState::draw_cpu(self, 775.0, 2.0, &mut canvas);
-        MainState::draw_code(self, 775.0, 100.0, 26, &mut canvas);
-        MainState::draw_oam(self, 1175.0, 100.0, 26, &mut canvas);
+        MainState::draw_cpu_ram(MainState::get_instance(), 10, 750, 0x0000, 16, 16, &mut canvas);
+        MainState::draw_cpu(MainState::get_instance(), 775.0, 2.0, &mut canvas);
+        MainState::draw_code(MainState::get_instance(), 775.0, 100.0, 26, &mut canvas);
+        MainState::draw_oam(MainState::get_instance(), 1175.0, 100.0, 26, &mut canvas);
 
-        let ppu = self.bus.borrow_mut().get_ppu();
+        let ppu = MainState::get_instance().bus.borrow_mut().get_ppu();
         ppu.borrow_mut().render(ctx, &mut canvas, 3.0);
         canvas.finish(ctx)?;
         Ok(())
@@ -485,9 +564,10 @@ fn main() -> GameResult
         .window_setup(ggez::conf::WindowSetup::default().title("Singularity Emu"))
         .window_mode(ggez::conf::WindowMode::default().dimensions(1440.0, 1080.0))
         .build()?;
-    let mut state = MainState::new()?;
 
-    state.sound_thread = Some(SoundEngine::initialize(state.sound_engine.clone()));
+    let main_state = MainState::get_instance();
+    main_state.sound_thread = Some(SoundEngine::initialize(main_state.sound_engine.as_mut().unwrap().clone()));
 
-    event::run(ctx, event_loop, state);
+    let event_handling_state = EventHandlingState::new();
+    event::run(ctx, event_loop, event_handling_state);
 }
