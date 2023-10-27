@@ -1,4 +1,4 @@
-use std::{cell::RefCell, rc::Rc};
+use std::sync::{Arc, Mutex};
 
 use ggez::{graphics::{self, ImageFormat, Sampler}, Context};
 
@@ -98,7 +98,7 @@ struct FgShifterInfo
 
 pub struct Ppu2c02
 {
-    cartridge: Option<Rc<RefCell<Cart>>>,
+    cartridge: Option<Arc<Mutex<Cart>>>,
     patterns: Box<[[u8; 4096]; 2]>,
     nametables: Box<[[u8; 1024]; 2]>,
     palettes: [u8; 32],
@@ -163,7 +163,7 @@ impl Ppu2c02
         return s;
     }
 
-    pub fn connect_cartridge(&mut self, cartridge: Rc<RefCell<Cart>>)
+    pub fn connect_cartridge(&mut self, cartridge: Arc<Mutex<Cart>>)
     {
         self.cartridge = Some(cartridge);
     }
@@ -211,16 +211,16 @@ impl Ppu2c02
         }
     }
 
-    pub fn get_oam_memory_at_addr(&mut self, addr: u8) -> u8
+    pub fn get_oam_memory_at_addr(&self, addr: u8) -> u8
     {
         unsafe
         {
             let oam_as_u8_ptr: &mut [u8] = std::slice::from_raw_parts_mut(
-                self.oam.as_mut_ptr() as *mut u8,
+                self.oam.as_ptr() as *mut u8,
                 self.oam.len() * std::mem::size_of::<ObjectAttributeEntry>()
             );
 
-            return oam_as_u8_ptr[addr as usize];
+            oam_as_u8_ptr[addr as usize]
         }
     }
 
@@ -242,10 +242,10 @@ impl Ppu2c02
         self.sprite_count = 0;
     }
 
-    pub fn render(&mut self, ctx: &mut Context, canvas: &mut ggez::graphics::Canvas, render_scale: f32)
+    pub fn render(&self, ctx: &mut Context, canvas: &mut ggez::graphics::Canvas, render_scale: f32)
     {
-        self.prepare_pattern_table(0);
-        self.prepare_pattern_table(1);
+        // self.prepare_pattern_table(0);
+        // self.prepare_pattern_table(1);
         self.renderer.render(ctx, canvas, render_scale);
     }
 
@@ -628,7 +628,7 @@ impl ReadWrite for Ppu2c02
         {
             Some(x) =>
             {
-                handled = x.borrow_mut().ppu_write(mut_addr, data)
+                handled = x.lock().unwrap().ppu_write(mut_addr, data)
             },
             None => panic!("No cartridge inserted, PPU tried to read")
         };
@@ -650,7 +650,7 @@ impl ReadWrite for Ppu2c02
                 {
                     Some(x) =>
                     {
-                        let mirror_mode = x.borrow().get_mirror_mode();
+                        let mirror_mode = x.lock().unwrap().get_mirror_mode();
                         match mirror_mode
                         {
                             MirrorMode::Vertical =>
@@ -727,7 +727,7 @@ impl ReadWrite for Ppu2c02
         {
             Some(x) =>
             {
-                handled = x.borrow().ppu_read(mut_addr, data)
+                handled = x.lock().unwrap().ppu_read(mut_addr, data)
             },
             None => panic!("No cartridge inserted, PPU tried to read")
         };
@@ -753,7 +753,7 @@ impl ReadWrite for Ppu2c02
                 {
                     Some(x) =>
                     {
-                        let mirror_mode = x.borrow().get_mirror_mode();
+                        let mirror_mode = x.lock().unwrap().get_mirror_mode();
                         match mirror_mode
                         {
                             MirrorMode::Vertical =>
@@ -835,7 +835,7 @@ impl ReadWrite for Ppu2c02
 
 impl Clockable for Ppu2c02
 {
-    fn clock_tick(&mut self)
+    fn clock_tick(&mut self) -> bool
     {
         // Based on the table from NesDev which details what clock ticks perform what operations
         // at what scanelines and cycles: https://www.nesdev.org/wiki/PPU_rendering
@@ -1253,6 +1253,8 @@ impl Clockable for Ppu2c02
                 self.frame_complete = true;
             }
         }
+
+        false
     }
 }
 
@@ -1361,7 +1363,7 @@ impl Ppu2c02Renderer
 
     }
 
-    pub fn render(&mut self, ctx: &mut Context, canvas: &mut ggez::graphics::Canvas, render_scale: f32)
+    pub fn render(&self, ctx: &mut Context, canvas: &mut ggez::graphics::Canvas, render_scale: f32)
     {
         canvas.set_sampler(Sampler::from(graphics::FilterMode::Nearest));
 

@@ -1,5 +1,6 @@
 use crate::traits::{ReadWrite, MapperTrait};
 
+use std::sync::{Arc, Mutex};
 use std::cell::RefCell;
 use std::fs::File;
 use std::io::{self, Read, Seek, SeekFrom};
@@ -70,7 +71,7 @@ pub struct Cart
     prg_banks: u8,
     chr_banks: u8,
     mirror_mode: MirrorMode,
-    mapper: Option<Rc<RefCell<dyn MapperTrait>>>
+    mapper: Option<Arc<Mutex<dyn MapperTrait>>>
 }
 
 impl Cart
@@ -119,7 +120,7 @@ impl Cart
 
         s.mapper = match s.mapper_id
         {
-            0 => Some(Rc::new(RefCell::new(Mapper000::new(s.prg_banks, s.chr_banks)))),
+            0 => Some(Arc::new(Mutex::new(Mapper000::new(s.prg_banks, s.chr_banks)))),
             _ => panic!("Invalid mapper type, not supported")
         };
 
@@ -140,7 +141,7 @@ impl ReadWrite for Cart
         let mut mapped_addr: u32 = 0;
         let handled = match &self.mapper
         {
-            Some(x) => x.borrow().cpu_map_write(address, &mut mapped_addr),
+            Some(x) => x.lock().unwrap().cpu_map_write(address, &mut mapped_addr),
             None => panic!("No mapper set for cartridge")
         };
 
@@ -157,7 +158,7 @@ impl ReadWrite for Cart
         let mut mapped_addr: u32 = 0;
         let handled = match &self.mapper
         {
-            Some(x) => x.borrow().cpu_map_read(address, &mut mapped_addr),
+            Some(x) => x.lock().unwrap().cpu_map_read(address, &mut mapped_addr),
             None => panic!("No mapper set for cartridge")
         };
 
@@ -174,7 +175,7 @@ impl ReadWrite for Cart
         let mut mapped_addr: u32 = 0;
         let handled = match &self.mapper
         {
-            Some(x) => x.borrow().ppu_map_write(address, &mut mapped_addr),
+            Some(x) => x.lock().unwrap().ppu_map_write(address, &mut mapped_addr),
             None => panic!("No mapper set for cartridge")
         };
 
@@ -191,7 +192,7 @@ impl ReadWrite for Cart
         let mut mapped_addr: u32 = 0;
         let handled =match &self.mapper
         {
-            Some(x) => x.borrow().ppu_map_read(address, &mut mapped_addr),
+            Some(x) => x.lock().unwrap().ppu_map_read(address, &mut mapped_addr),
             None => panic!("No mapper set for cartridge")
         };
 

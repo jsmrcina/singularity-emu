@@ -35,11 +35,12 @@ pub mod sound;
 
 struct MainState
 {
-    bus: Rc<RefCell<MainBus>>,
-    cpu: Option<Rc<RefCell<Cpu6502>>>,
-    ppu: Option<Rc<RefCell<Ppu2c02>>>,
-    apu: Option<Rc<RefCell<Apu2a03>>>,
+    bus: Arc<Mutex<MainBus>>,
+    cpu: Option<Arc<Mutex<Cpu6502>>>,
+    ppu: Option<Arc<Mutex<Ppu2c02>>>,
+    apu: Option<Arc<Mutex<Apu2a03>>>,
     map_asm: BTreeMap<u16, String>,
+    audio_thread_emulation_tick: bool,
     emulation_run: bool,
     residual_time: f32,
     sound_engine: Option<Arc<Mutex<SoundEngine>>>,
@@ -56,19 +57,21 @@ impl MainState
     {
         self.sound_engine = Some(Arc::new(Mutex::new(SoundEngine::new(MainState::emulator_tick))));
 
+        let mut bus = self.bus.lock().unwrap();
+        self.cpu = Some(Arc::clone(&bus.get_cpu()));
+        self.ppu = Some(Arc::clone(&bus.get_ppu()));
+        self.apu = Some(Arc::clone(&bus.get_apu()));
+
         // Link the CPU to the BUS
-        // TODO: Better to move this?
-        // TODO: Revert back to using the trait once CPU is debugged
-        let bus_trait_object = Rc::clone(&self.bus);// as Rc<RefCell<dyn ReadWrite>>;
-        self.bus.borrow_mut().get_cpu().borrow_mut().set_bus(Some(bus_trait_object));
+        self.cpu.as_mut().unwrap().lock().unwrap().set_bus(Some(Arc::clone(&self.bus)));
 
         let cart = Cart::new("data\\super mario.nes".to_string());
         match cart
         {
             Ok(x) =>
             {
-                let cart_wrapper = Rc::new(RefCell::new(x));
-                self.bus.borrow_mut().insert_cartridge(cart_wrapper);
+                let cart_wrapper = Arc::new(Mutex::new(x));
+                bus.insert_cartridge(cart_wrapper);
             },
             _ =>
             {
@@ -76,9 +79,10 @@ impl MainState
             }
         }
 
-        // Dissemble code into our main state so we can render it\
-        let cpu = self.bus.borrow_mut().get_cpu();
-        self.map_asm = cpu.borrow_mut().disassemble(0x0000, 0xFFFF, false);
+        drop(bus);
+
+        // Dissemble code into our main state so we can render it
+        self.map_asm = self.cpu.as_mut().unwrap().lock().unwrap().disassemble(0x0000, 0xFFFF, false);
 
         // Reset the CPU
         self.reset();
@@ -92,15 +96,16 @@ impl MainState
             INIT.call_once(|| {
                 INSTANCE = Some(MainState
                 {
-                    bus: Rc::new(RefCell::new(MainBus::new())),
+                    bus: Arc::new(Mutex::new(MainBus::new())),
                     cpu: None,
                     ppu: None,
                     apu: None,
                     map_asm: BTreeMap::new(),
+                    audio_thread_emulation_tick: true,
                     emulation_run: false,
                     residual_time: 0.0,
                     sound_engine: None,
-                    sound_thread: None
+                    sound_thread: None,
                 });
 
                 (*INSTANCE.as_mut().unwrap()).initialize();
@@ -116,6 +121,7 @@ impl MainState
     {
         let n_cpu_ram_x: f32 = x as f32;
         let mut n_cpu_ram_y: f32 = y as f32;
+        let mut bus = self.bus.lock().unwrap();
 
         for _ in 0..n_rows
         {
@@ -123,7 +129,7 @@ impl MainState
             for _ in 0..n_cols
             {
                 let mut data: u8 = 0;
-                self.bus.borrow_mut().cpu_read(n_addr, &mut data);
+                bus.cpu_read(n_addr, &mut data);
                 s_offset = s_offset + &format!(" {:02x}", data);
                 n_addr += 1;
             }
@@ -135,60 +141,60 @@ impl MainState
 
     fn draw_cpu(&mut self, x: f32, y: f32, canvas: &mut ggez::graphics::Canvas)
     {
-        let cpu = self.bus.borrow_mut().get_cpu();
+        let cpu = self.cpu.as_ref().unwrap().lock().unwrap();
 
         canvas.draw(&Text::new("Status"), Vec2::new(x, y));
         let mut num_offset: f32 = 0.0;
 
-        let color = if cpu.borrow().get_flag(Flags6502::N) == Flags6502::N as u8 { graphics::Color::GREEN } else { graphics::Color::RED };
+        let color = if cpu.get_flag(Flags6502::N) == Flags6502::N as u8 { graphics::Color::GREEN } else { graphics::Color::RED };
         canvas.draw(&Text::new("N"), graphics::DrawParam::new().color(color).dest(Vec2::new(x + 64.0 + (MainState::OFFSET_X * num_offset), y)));
         num_offset += 1.0;
 
-        let color = if cpu.borrow().get_flag(Flags6502::V) == Flags6502::V as u8 { graphics::Color::GREEN } else { graphics::Color::RED };
+        let color = if cpu.get_flag(Flags6502::V) == Flags6502::V as u8 { graphics::Color::GREEN } else { graphics::Color::RED };
         canvas.draw(&Text::new("V"), graphics::DrawParam::new().color(color).dest(Vec2::new(x + 64.0 + (MainState::OFFSET_X * num_offset), y)));
         num_offset += 1.0;
 
-        let color = if cpu.borrow().get_flag(Flags6502::U) == Flags6502::U as u8 { graphics::Color::GREEN } else { graphics::Color::RED };
+        let color = if cpu.get_flag(Flags6502::U) == Flags6502::U as u8 { graphics::Color::GREEN } else { graphics::Color::RED };
         canvas.draw(&Text::new("-"), graphics::DrawParam::new().color(color).dest(Vec2::new(x + 64.0 + (MainState::OFFSET_X * num_offset), y)));
         num_offset += 1.0;
 
-        let color = if cpu.borrow().get_flag(Flags6502::B) == Flags6502::B as u8 { graphics::Color::GREEN } else { graphics::Color::RED };
+        let color = if cpu.get_flag(Flags6502::B) == Flags6502::B as u8 { graphics::Color::GREEN } else { graphics::Color::RED };
         canvas.draw(&Text::new("B"), graphics::DrawParam::new().color(color).dest(Vec2::new(x + 64.0 + (MainState::OFFSET_X * num_offset), y)));
         num_offset += 1.0;
 
-        let color = if cpu.borrow().get_flag(Flags6502::D) == Flags6502::D as u8 { graphics::Color::GREEN } else { graphics::Color::RED };
+        let color = if cpu.get_flag(Flags6502::D) == Flags6502::D as u8 { graphics::Color::GREEN } else { graphics::Color::RED };
         canvas.draw(&Text::new("D"), graphics::DrawParam::new().color(color).dest(Vec2::new(x + 64.0 + (MainState::OFFSET_X * num_offset), y)));
         num_offset += 1.0;
 
-        let color = if cpu.borrow().get_flag(Flags6502::I) == Flags6502::I as u8 { graphics::Color::GREEN } else { graphics::Color::RED };
+        let color = if cpu.get_flag(Flags6502::I) == Flags6502::I as u8 { graphics::Color::GREEN } else { graphics::Color::RED };
         canvas.draw(&Text::new("I"), graphics::DrawParam::new().color(color).dest(Vec2::new(x + 64.0 + (MainState::OFFSET_X * num_offset), y)));
         num_offset += 1.0;
 
-        let color = if cpu.borrow().get_flag(Flags6502::Z) == Flags6502::Z as u8 { graphics::Color::GREEN } else { graphics::Color::RED };
+        let color = if cpu.get_flag(Flags6502::Z) == Flags6502::Z as u8 { graphics::Color::GREEN } else { graphics::Color::RED };
         canvas.draw(&Text::new("Z"), graphics::DrawParam::new().color(color).dest(Vec2::new(x + 64.0 + (MainState::OFFSET_X * num_offset), y)));
         num_offset += 1.0;
 
-        let color = if cpu.borrow().get_flag(Flags6502::C) == Flags6502::C as u8 { graphics::Color::GREEN } else { graphics::Color::RED };
+        let color = if cpu.get_flag(Flags6502::C) == Flags6502::C as u8 { graphics::Color::GREEN } else { graphics::Color::RED };
         canvas.draw(&Text::new("C"), graphics::DrawParam::new().color(color).dest(Vec2::new(x + 64.0 + (MainState::OFFSET_X * num_offset), y)));
         
         num_offset = 1.0;
 
-        canvas.draw(&Text::new(format!("PC: ${:04x}", cpu.borrow().get_pc())), Vec2::new(x, y + (MainState::OFFSET_Y * num_offset)));
+        canvas.draw(&Text::new(format!("PC: ${:04x}", cpu.get_pc())), Vec2::new(x, y + (MainState::OFFSET_Y * num_offset)));
         num_offset += 1.0;
 
-        canvas.draw(&Text::new(format!("A: ${:02x} [{:02}]", cpu.borrow().get_a(), cpu.borrow().get_a())), 
+        canvas.draw(&Text::new(format!("A: ${:02x} [{:02}]", cpu.get_a(), cpu.get_a())), 
             Vec2::new(x, y + (MainState::OFFSET_Y * num_offset)));
         num_offset += 1.0;
 
-        canvas.draw(&Text::new(format!("X: ${:02x} [{:02}]", cpu.borrow().get_x(), cpu.borrow().get_x())),
+        canvas.draw(&Text::new(format!("X: ${:02x} [{:02}]", cpu.get_x(), cpu.get_x())),
             Vec2::new(x, y + (MainState::OFFSET_Y * num_offset)));
         num_offset += 1.0;
 
-        canvas.draw(&Text::new(format!("Y: ${:02x} [{:02}]", cpu.borrow().get_y(), cpu.borrow().get_y())),
+        canvas.draw(&Text::new(format!("Y: ${:02x} [{:02}]", cpu.get_y(), cpu.get_y())),
             Vec2::new(x, y + (MainState::OFFSET_Y * num_offset)));
         num_offset += 1.0;
 
-        canvas.draw(&Text::new(format!("Stack P: ${:04x}", cpu.borrow().get_stkp())), Vec2::new(x, y + (MainState::OFFSET_Y * num_offset)));
+        canvas.draw(&Text::new(format!("Stack P: ${:04x}", cpu.get_stkp())), Vec2::new(x, y + (MainState::OFFSET_Y * num_offset)));
 
         // TODO: Implement disassembly
 
@@ -196,16 +202,16 @@ impl MainState
 
     fn draw_code(&mut self, x: f32, y: f32, n_lines: i32, canvas: &mut ggez::graphics::Canvas)
     {
-        let cpu = self.bus.borrow_mut().get_cpu();
+        let cpu = self.cpu.as_ref().unwrap().lock().unwrap();
 
-        let mut before_keys: Vec<_> = self.map_asm.range((Bound::Unbounded, Bound::Excluded(cpu.borrow().get_pc())))
+        let mut before_keys: Vec<_> = self.map_asm.range((Bound::Unbounded, Bound::Excluded(cpu.get_pc())))
                                                 .rev()
                                                 .take((n_lines / 2) as usize)
                                                 .collect();
 
         before_keys.reverse();
 
-        let after_keys: Vec<_> = self.map_asm.range((Bound::Excluded(cpu.borrow().get_pc()), Bound::Unbounded))
+        let after_keys: Vec<_> = self.map_asm.range((Bound::Excluded(cpu.get_pc()), Bound::Unbounded))
             .take((n_lines / 2) as usize)
             .collect();
 
@@ -216,7 +222,7 @@ impl MainState
             num_offset += 1;
         }
 
-        let inst = self.map_asm.get(&cpu.borrow().get_pc());
+        let inst = self.map_asm.get(&cpu.get_pc());
         match inst
         {
             
@@ -236,13 +242,13 @@ impl MainState
 
     fn draw_oam(&mut self, x: f32, y: f32, n_lines: i32, canvas: &mut ggez::graphics::Canvas)
     {
+        let ppu = self.ppu.as_ref().unwrap().lock().unwrap();
         for i in 0..(n_lines as u8)
         {
-            let ppu = self.bus.borrow_mut().get_ppu();
-            let byte_0 = ppu.borrow_mut().get_oam_memory_at_addr(i * 4);
-            let byte_1 = ppu.borrow_mut().get_oam_memory_at_addr(i * 4 + 1);
-            let byte_2 = ppu.borrow_mut().get_oam_memory_at_addr(i * 4 + 2);
-            let byte_3 = ppu.borrow_mut().get_oam_memory_at_addr(i * 4 + 3);
+            let byte_0 = ppu.get_oam_memory_at_addr(i * 4);
+            let byte_1 = ppu.get_oam_memory_at_addr(i * 4 + 1);
+            let byte_2 = ppu.get_oam_memory_at_addr(i * 4 + 2);
+            let byte_3 = ppu.get_oam_memory_at_addr(i * 4 + 3);
 
             let s: String = format!("{:02x}: ({}, {}) ID: {:02x} AT: {:02x}",
                 i,
@@ -257,47 +263,49 @@ impl MainState
 
     fn process_controller_input(&mut self, ctx: &mut Context)
     {
-        let mut bus = self.bus.borrow_mut();
-        bus.get_controller(0).borrow_mut().clear_live_state();
+        let mut bus = self.bus.lock().unwrap();
+        let controller_object = bus.get_controller(0);
+        let mut controller = controller_object.lock().unwrap();
+        controller.clear_live_state();
         
         if ctx.keyboard.is_key_pressed(ggez::input::keyboard::KeyCode::X)
         {
-            bus.get_controller(0).borrow_mut().set_live_state_bit(NesKey::A);
+            controller.set_live_state_bit(NesKey::A);
         }
 
         if ctx.keyboard.is_key_pressed(ggez::input::keyboard::KeyCode::Z)
         {
-            bus.get_controller(0).borrow_mut().set_live_state_bit(NesKey::B);
+            controller.set_live_state_bit(NesKey::B);
         }
 
         if ctx.keyboard.is_key_pressed(ggez::input::keyboard::KeyCode::A)
         {
-            bus.get_controller(0).borrow_mut().set_live_state_bit(NesKey::START);
+            controller.set_live_state_bit(NesKey::START);
         }
 
         if ctx.keyboard.is_key_pressed(ggez::input::keyboard::KeyCode::S)
         {
-            bus.get_controller(0).borrow_mut().set_live_state_bit(NesKey::SELECT);
+            controller.set_live_state_bit(NesKey::SELECT);
         }
 
         if ctx.keyboard.is_key_pressed(ggez::input::keyboard::KeyCode::Up)
         {
-            bus.get_controller(0).borrow_mut().set_live_state_bit(NesKey::UP);
+            controller.set_live_state_bit(NesKey::UP);
         }
 
         if ctx.keyboard.is_key_pressed(ggez::input::keyboard::KeyCode::Down)
         {
-            bus.get_controller(0).borrow_mut().set_live_state_bit(NesKey::DOWN);
+            controller.set_live_state_bit(NesKey::DOWN);
         }
 
         if ctx.keyboard.is_key_pressed(ggez::input::keyboard::KeyCode::Left)
         {
-            bus.get_controller(0).borrow_mut().set_live_state_bit(NesKey::LEFT);
+            controller.set_live_state_bit(NesKey::LEFT);
         }
 
         if ctx.keyboard.is_key_pressed(ggez::input::keyboard::KeyCode::Right)
         {
-            bus.get_controller(0).borrow_mut().set_live_state_bit(NesKey::RIGHT);
+            controller.set_live_state_bit(NesKey::RIGHT);
         }
     }
 
@@ -318,26 +326,24 @@ impl MainState
                 loop
                 {
                     self.clock_tick();
-                    if self.ppu.as_ref().unwrap().borrow().frame_complete()
+                    if self.ppu.as_ref().unwrap().lock().unwrap().frame_complete()
                     {
                         break;
                     }
                 }
 
-                self.ppu.as_ref().unwrap().borrow_mut().set_frame_complete(false);
+                self.ppu.as_mut().unwrap().lock().unwrap().set_frame_complete(false);
             }
         }
         else
         {
-            let cpu = self.bus.borrow_mut().get_cpu();
-
             // Stepping mode
             if ctx.keyboard.is_key_just_pressed(ggez::input::keyboard::KeyCode::C)
             {   
                 loop
                 {
                     self.clock_tick();
-                    if cpu.borrow().complete()
+                    if self.cpu.as_mut().unwrap().lock().unwrap().complete()
                     {
                         break;
                     }
@@ -347,7 +353,7 @@ impl MainState
                 loop
                 {
                     self.clock_tick();
-                    if !cpu.borrow().complete()
+                    if !self.cpu.as_mut().unwrap().lock().unwrap().complete()
                     {
                         break;
                     }
@@ -359,7 +365,7 @@ impl MainState
                 loop
                 {
                     self.clock_tick();
-                    if self.bus.borrow_mut().get_ppu().borrow().frame_complete()
+                    if self.ppu.as_ref().unwrap().lock().unwrap().frame_complete()
                     {
                         break;
                     }
@@ -369,13 +375,13 @@ impl MainState
                 loop
                 {
                     self.clock_tick();
-                    if !cpu.borrow().complete()
+                    if !self.cpu.as_mut().unwrap().lock().unwrap().complete()
                     {
                         break;
                     }
                 }
 
-                self.bus.borrow_mut().get_ppu().borrow_mut().set_frame_complete(false);
+                self.ppu.as_mut().unwrap().lock().unwrap().set_frame_complete(false);
             }
         }
 
@@ -417,37 +423,34 @@ impl MainState
         Ok(())
     }
 
-    pub fn emulator_tick()
+    pub fn emulator_tick() -> bool
     {
-        MainState::get_instance().clock_tick();
+        MainState::get_instance().clock_tick()
     }
 
 }
 
 impl Clockable for MainState
 {
-    fn clock_tick(&mut self)
+    fn clock_tick(&mut self) -> bool
     {
-        let cpu = self.cpu.as_ref().unwrap();
-        let ppu = self.ppu.as_ref().unwrap();
-        let apu = self.apu.as_ref().unwrap();
-        let clock_counter = self.bus.borrow().get_clock_counter();
+        let clock_counter = self.bus.lock().unwrap().get_clock_counter();
 
-        ppu.borrow_mut().clock_tick();
-
-        apu.borrow_mut().clock_tick();
+        self.ppu.as_mut().unwrap().lock().unwrap().clock_tick();
+        self.apu.as_mut().unwrap().lock().unwrap().clock_tick();
 
         if clock_counter % 3 == 0
         {
-            if self.bus.borrow().is_dma_transfer_in_progress()
+            let mut bus = self.bus.lock().unwrap();
+            if bus.is_dma_transfer_in_progress()
             {
-                let dma_info_ptr = self.bus.borrow_mut().get_dma_info();
-                let mut dma_info = dma_info_ptr.borrow_mut();
+                let dma_info_ptr = bus.get_dma_info();
+                let mut dma_info = dma_info_ptr.lock().unwrap();
 
                 if dma_info.is_sync_needed()
                 {
                     // Since DMA transfer can only be initiated on an even clock cycle, we synchronize here
-                    if self.bus.borrow_mut().get_clock_counter() % 2 == 1
+                    if bus.get_clock_counter() % 2 == 1
                     {
                         dma_info.set_sync_needed(false);
                     }
@@ -456,15 +459,15 @@ impl Clockable for MainState
                 {
                     // On even cycles, read from the bus (could be CPU, cart, etc.)
                     // On odd cycles, write to the PPU
-                    if self.bus.borrow_mut().get_clock_counter() % 2 == 0
+                    if bus.get_clock_counter() % 2 == 0
                     {
                         let mut data: u8 = 0;
-                        self.bus.borrow_mut().cpu_read((dma_info.get_page() as u16) << 8 | (dma_info.get_addr() as u16), &mut data);
+                        bus.cpu_read((dma_info.get_page() as u16) << 8 | (dma_info.get_addr() as u16), &mut data);
                         dma_info.set_data(data);
                     }
                     else
                     {
-                        ppu.borrow_mut().set_oam_memory_at_addr(dma_info.get_addr(), dma_info.get_data());
+                        self.ppu.as_mut().unwrap().lock().unwrap().set_oam_memory_at_addr(dma_info.get_addr(), dma_info.get_data());
                         let new_addr = dma_info.get_addr().wrapping_add(1);
                         dma_info.set_addr(new_addr);
 
@@ -478,20 +481,22 @@ impl Clockable for MainState
             }
             else
             {
-                cpu.borrow_mut().clock_tick();
+                drop(bus);
+                self.cpu.as_mut().unwrap().lock().unwrap().clock_tick();
             }
         }
 
         // Synchronize with audio
-        self.sound_engine.as_mut().unwrap().lock().unwrap().clock_tick();
+        let result = self.sound_engine.as_mut().unwrap().lock().unwrap().clock_tick();
 
-        if ppu.borrow().get_nmi()
+        if self.ppu.as_mut().unwrap().lock().unwrap().get_nmi()
         {
-            ppu.borrow_mut().set_nmi(false);
-            cpu.borrow_mut().nmi();
+            self.ppu.as_mut().unwrap().lock().unwrap().set_nmi(false);
+            self.cpu.as_mut().unwrap().lock().unwrap().nmi();
         }
 
-        self.bus.borrow_mut().increment_clock_counter();
+        self.bus.lock().unwrap().increment_clock_counter();
+        result
     }
 }
 
@@ -500,19 +505,16 @@ impl Resettable for MainState
     fn reset(&mut self)
     {
         // Reset the main bus
-        self.bus.borrow_mut().reset();
+        self.bus.lock().unwrap().reset();
 
         // Reset the CPU
-        self.cpu = Some(self.bus.borrow_mut().get_cpu());
-        self.cpu.as_ref().unwrap().borrow_mut().reset();
+        self.cpu.as_mut().unwrap().lock().unwrap().reset();
 
         // Reset the PPU
-        self.ppu = Some(self.bus.borrow_mut().get_ppu());
-        self.ppu.as_ref().unwrap().borrow_mut().reset();
+        self.ppu.as_mut().unwrap().lock().unwrap().reset();
 
         // Reset the APU
-        self.apu = Some(self.bus.borrow_mut().get_apu());
-        self.apu.as_ref().unwrap().borrow_mut().reset();
+        self.apu.as_mut().unwrap().lock().unwrap().reset();
     }
 }
 
@@ -531,15 +533,22 @@ impl EventHandlingState
 
 impl event::EventHandler<ggez::GameError> for EventHandlingState
 {
-
     fn update(&mut self, ctx: &mut Context) -> GameResult
     {
-        MainState::get_instance().emulator_update_with_audio(ctx)
+        
+
+        if MainState::get_instance().audio_thread_emulation_tick
+        {
+            MainState::get_instance().emulator_update_with_audio(ctx)
+        }
+        else
+        {
+            MainState::get_instance().emulator_update_without_audio(ctx)
+        }
     }
 
     fn draw(&mut self, ctx: &mut Context) -> GameResult
     {
-
         let mut canvas = graphics::Canvas::from_frame(
             ctx,
             graphics::Color::from([0.0, 0.0, 0.0, 1.0]),
@@ -550,9 +559,7 @@ impl event::EventHandler<ggez::GameError> for EventHandlingState
         MainState::draw_cpu(MainState::get_instance(), 775.0, 2.0, &mut canvas);
         MainState::draw_code(MainState::get_instance(), 775.0, 100.0, 26, &mut canvas);
         MainState::draw_oam(MainState::get_instance(), 1175.0, 100.0, 26, &mut canvas);
-
-        let ppu = MainState::get_instance().bus.borrow_mut().get_ppu();
-        ppu.borrow_mut().render(ctx, &mut canvas, 3.0);
+        MainState::get_instance().ppu.as_ref().unwrap().lock().unwrap().render(ctx, &mut canvas, 3.0);
         canvas.finish(ctx)?;
         Ok(())
     }

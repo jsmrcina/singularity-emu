@@ -16,7 +16,7 @@ pub trait MapperTrait
 
 pub trait Clockable
 {
-    fn clock_tick(&mut self);
+    fn clock_tick(&mut self) -> bool;
 }
 
 pub trait Resettable

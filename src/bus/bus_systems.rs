@@ -1,5 +1,4 @@
-use std::rc::Rc;
-use std::cell::RefCell;
+use std::sync::{Arc, Mutex};
 
 use std::collections::HashMap;
 
@@ -10,7 +9,7 @@ pub struct System
     pub _name: String,
     // We assume priority of a given range is unique (i.e. you cannot have two priority 0 items over a specific range)
     pub priority: u8,
-    pub sys: Rc<RefCell<dyn ReadWrite>>
+    pub sys: Arc<Mutex<dyn ReadWrite>>
 }
 
 pub struct BusSystems
@@ -28,7 +27,7 @@ impl BusSystems
         }
     }
 
-    pub fn add_system(&mut self, address_range: (u16, u16), name: String, priority: u8, sys: Rc<RefCell<dyn ReadWrite>>)
+    pub fn add_system(&mut self, address_range: (u16, u16), name: String, priority: u8, sys: Arc<Mutex<dyn ReadWrite>>)
     {
         let s: System = System {
             _name: name,

@@ -146,8 +146,9 @@ impl ReadWrite for Apu2a03
 
 impl Clockable for Apu2a03
 {
-    fn clock_tick(&mut self) {
-        todo!()
+    fn clock_tick(&mut self) -> bool
+    {
+        return false;
     }
 }
 

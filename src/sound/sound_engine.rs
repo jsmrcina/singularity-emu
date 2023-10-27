@@ -1,4 +1,4 @@
-use std::{sync::{Arc, Mutex}, rc::Rc, cell::RefCell};
+use std::sync::{Arc, Mutex};
 
 use fundsp::{hacker::*, prelude::PulseWave};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
@@ -19,13 +19,12 @@ pub struct SoundEngine
     audio_time_per_nes_clock: f64,
     audio_time: f64,
     audio_sample: f64,
-    sample_ready: bool,
-    emulator_tick_callback: fn()
+    emulator_tick_callback: fn() -> bool
 }
 
 impl SoundEngine
 {
-    pub fn new(emulator_tick_callback: fn()) -> Self
+    pub fn new(emulator_tick_callback: fn() -> bool) -> Self
     {
         SoundEngine {
             sample_rate: 0,
@@ -38,7 +37,6 @@ impl SoundEngine
             audio_time_per_nes_clock: 0.0,
             audio_time: 0.0,
             audio_sample: 0.0,
-            sample_ready: false,
             emulator_tick_callback
         }
     }
@@ -90,26 +88,40 @@ impl SoundEngine
 
     pub fn sound_out(engine: Arc<Mutex<SoundEngine>>, data: &mut [f32])
     {
-        let mut inner = engine.lock().unwrap();
-
-        // while !inner.sample_ready
-        // {
-        //     // Call into MainState and keep clocking.
-        //     (inner.emulator_tick_callback)();
-        // }
-
-        for frame in data.chunks_mut(inner.channels)
         {
-            let mut sample = 0.0;
-            for osc in &mut inner.oscillators
+            let channels = engine.lock().unwrap().channels;
+            for frame in data.chunks_mut(channels)
             {
-               sample += osc.get_mono();
-            }
-            sample /= inner.oscillators.len() as f64;
+                // Generate the next sample
+                {
+                    let inner = engine.lock().unwrap();
+        
+                    // This is set elsewhere
+                    let callback = inner.emulator_tick_callback;
+                    drop(inner);
+        
+                    let mut sample_ready = false;
+                    while !sample_ready
+                    {
+                        // Call into MainState and keep clocking; this takes the engine lock
+                        // so we need to drop it before continuing
+                        sample_ready = callback();
+                    }
+                }
 
-            for sample_slot in frame.iter_mut()
-            {
-                *sample_slot = sample as f32;
+                let mut inner = engine.lock().unwrap();
+                let mut sample = 0.0;
+                for osc in &mut inner.oscillators
+                {
+                    // sample += osc.get_mono();
+                }
+                sample /= inner.oscillators.len() as f64;
+
+
+                for sample_slot in frame.iter_mut()
+                {
+                    *sample_slot = sample as f32;
+                }
             }
         }
     }
@@ -119,6 +131,7 @@ impl SoundEngine
         self.sample_rate = sample_rate;
         self.audio_time_per_system_sample = 1.0 / self.sample_rate as f64;
         self.audio_time_per_nes_clock = 1.0 / 5369318.0; // PPU Clock Frequency, based on NTSC NES core frequency
+        println!("{} {}", self.audio_time_per_system_sample, self.audio_time_per_nes_clock);
     }
 
     pub fn initialize(engine: Arc<Mutex<SoundEngine>>) -> cpal::Stream
@@ -175,14 +188,16 @@ impl SoundEngine
 
 impl Clockable for SoundEngine
 {
-    fn clock_tick(&mut self)
+    fn clock_tick(&mut self) -> bool
     {
         self.audio_time += self.audio_time_per_nes_clock;
         if self.audio_time >= self.audio_time_per_system_sample
         {
             self.audio_time -= self.audio_time_per_system_sample;
-            self.audio_sample = MainState::get_instance().apu.as_mut().unwrap().borrow_mut().get_output_sample();
-            self.sample_ready = true;
+            self.audio_sample = MainState::get_instance().apu.as_ref().unwrap().lock().unwrap().get_output_sample();
+            return true;
         }
+
+        false
     }
 }

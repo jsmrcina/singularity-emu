@@ -2,8 +2,7 @@ use crate::bus::main_bus::MainBus;
 use crate::traits::{ReadWrite, Clockable, Resettable};
 use crate::cartridge::cart::Cart;
 use std::fmt;
-use std::rc::Rc;
-use std::cell::RefCell;
+use std::sync::{Arc, Mutex};
 use std::collections::BTreeMap;
 
 include!("instructions.rs");
@@ -31,8 +30,8 @@ struct Instruction
 
 pub struct Cpu6502
 {
-    bus: Option<Rc<RefCell<MainBus>>>,
-    cartridge: Option<Rc<RefCell<Cart>>>,
+    bus: Option<Arc<Mutex<MainBus>>>,
+    cartridge: Option<Arc<Mutex<Cart>>>,
     a: u8,
     x: u8,
     y: u8,
@@ -53,12 +52,12 @@ impl Cpu6502
     const STACK_START_ADDRESS: u16 = 0x0100;
     const INTERRUPT_VECTOR: [u16; 2] = [0xFFFE, 0xFFFF];
 
-    pub fn set_bus(&mut self, bus: Option<Rc<RefCell<MainBus>>>)
+    pub fn set_bus(&mut self, bus: Option<Arc<Mutex<MainBus>>>)
     {
         self.bus = bus;
     }
 
-    pub fn connect_cartridge(&mut self, cartridge: Rc<RefCell<Cart>>)
+    pub fn connect_cartridge(&mut self, cartridge: Arc<Mutex<Cart>>)
     {
         self.cartridge = Some(cartridge);
     }
@@ -1297,7 +1296,7 @@ impl Cpu6502
             {
                 Some(x) =>
                 {
-                    (*x.borrow_mut()).cpu_read(addr as u16, &mut opcode)
+                    x.lock().unwrap().cpu_read(addr as u16, &mut opcode)
                 },
                 None => panic!("Error, missing bus inside CPU")
             };
@@ -1625,9 +1624,9 @@ impl fmt::Debug for Cpu6502
         {
             Some(x) =>
             {
-                let mut bus = x.borrow_mut();
-                cycle = bus.get_ppu().borrow().get_cycle();
-                scan_line = bus.get_ppu().borrow().get_scan_line();
+                let mut bus = x.lock().unwrap();
+                cycle = bus.get_ppu().lock().unwrap().get_cycle();
+                scan_line = bus.get_ppu().lock().unwrap().get_scan_line();
             },
             None =>
             {
@@ -1646,7 +1645,7 @@ impl ReadWrite for Cpu6502
     {
         match &self.bus
         {
-            Some(x) => (*x.borrow_mut()).cpu_write(address, data),
+            Some(x) => x.lock().unwrap().cpu_write(address, data),
             None => panic!("Error, missing bus inside CPU")
         }
     }
@@ -1655,7 +1654,7 @@ impl ReadWrite for Cpu6502
     {
         match &self.bus
         {
-            Some(x) => (*x.borrow_mut()).cpu_read(address, data),
+            Some(x) => x.lock().unwrap().cpu_read(address, data),
             None => panic!("Error, missing bus inside CPU")
         }
     }
@@ -1673,7 +1672,7 @@ impl ReadWrite for Cpu6502
 
 impl Clockable for Cpu6502
 {
-    fn clock_tick(&mut self)
+    fn clock_tick(&mut self) -> bool
     {
         if self.cycles == 0
         {
@@ -1703,5 +1702,6 @@ impl Clockable for Cpu6502
 
          self.cycles -= 1;
          self.total_cycles += 1;
+         false
     }
 }
