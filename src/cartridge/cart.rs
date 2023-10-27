@@ -1,10 +1,8 @@
 use crate::traits::{ReadWrite, MapperTrait};
 
 use std::sync::{Arc, Mutex};
-use std::cell::RefCell;
 use std::fs::File;
 use std::io::{self, Read, Seek, SeekFrom};
-use std::rc::Rc;
 use byteorder::ReadBytesExt;
 
 use crate::mapper::mapper000::Mapper000;

@@ -87,6 +87,12 @@ impl Sequencer
     }
 }
 
+impl Default for Sequencer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Clockable for Sequencer
 {
     fn clock_tick(&mut self) -> bool

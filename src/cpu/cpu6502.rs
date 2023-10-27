@@ -47,6 +47,9 @@ pub struct Cpu6502
     ins: [Instruction; 256]
 }
 
+// Note: We are only doing address comparisons within this class and they are
+// the easiest way to implement this. I might revisit this, but it isn't causing issues.
+#[allow(clippy::fn_address_comparisons)]
 impl Cpu6502
 {
     const STACK_START_ADDRESS: u16 = 0x0100;
@@ -66,10 +69,12 @@ impl Cpu6502
     {
         if (self.status & (f as u8)) > 0
         {
-            return 1;
+            1
         }
-
-        return 0;
+        else
+        {
+            0
+        }
     }
 
     pub fn set_flag(&mut self, f: Flags6502, b: bool)
@@ -88,40 +93,39 @@ impl Cpu6502
     {
         let mut lo: u8 = 0;
         let mut hi: u8 = 0;
-        let data: u16;
 
         self.cpu_read(self.pc, &mut lo);
         self.pc += 1;
         self.cpu_read(self.pc, &mut hi);
         self.pc += 1;
 
-        data = ((hi as u16) << 8) | (lo as u16);
-        return (true, hi as u16, lo as u16, data);
+        let data: u16 = ((hi as u16) << 8) | (lo as u16);
+        (true, hi as u16, lo as u16, data)
     }
 
     pub fn get_pc(&self) -> u16
     {
-        return self.pc;
+        self.pc
     }
 
     pub fn get_a(&self) -> u8
     {
-        return self.a;
+        self.a
     }
 
     pub fn get_x(&self) -> u8
     {
-        return self.x;
+        self.x
     }
 
     pub fn get_y(&self) -> u8
     {
-        return self.y;
+        self.y
     }
 
     pub fn get_stkp(&self) -> u8
     {
-        return self.stkp;
+        self.stkp
     }
 
     // #region Addressing Modes
@@ -129,14 +133,14 @@ impl Cpu6502
     {
         // The instruction may operate on the accumulator
         self.fetched_data = self.a;
-        return 0;
+        0
     }
 
     pub fn imm(&mut self) -> u8
     {
         self.addr_abs = self.pc;
         self.pc += 1;
-        return 0;
+        0
     }
 
     pub fn zp0(&mut self) -> u8
@@ -147,7 +151,7 @@ impl Cpu6502
         self.addr_abs = addr_abs_u8 as u16;
         self.pc += 1;
         self.addr_abs &= 0x00FF;
-        return 0;
+        0
     }
 
     pub fn zpx(&mut self) -> u8
@@ -159,7 +163,7 @@ impl Cpu6502
         self.addr_abs = addr_abs_u8 as u16 + self.x as u16;
         self.pc += 1;
         self.addr_abs &= 0x00FF;
-        return 0;
+        0
     }
 
     pub fn zpy(&mut self) -> u8
@@ -170,7 +174,7 @@ impl Cpu6502
         self.addr_abs = addr_abs_u8 as u16 + self.y as u16;
         self.pc += 1;
         self.addr_abs &= 0x00FF;
-        return 0;
+        0
     }
 
     pub fn rel(&mut self) -> u8
@@ -186,14 +190,14 @@ impl Cpu6502
             self.addr_rel |= 0xFF00;
         }
 
-        return 0;
+        0
     }
 
     pub fn abs(&mut self) -> u8
     {
         // Absolute addressing (full u16 address)
         (_, _, _, self.addr_abs) = self.cpu_read_u16_from_pc();
-        return 0; 
+        0 
     }
 
     pub fn abx(&mut self) -> u8
@@ -206,11 +210,11 @@ impl Cpu6502
         // If this crosses a page boundary, we need an additional clock cycle for this instruction
         if (self.addr_abs & 0xFF00) != (hi << 8)
         {
-            return 1;
+            1
         }
         else
         {
-            return 0;	
+            0	
         }
     }
 
@@ -224,11 +228,11 @@ impl Cpu6502
         // If this crosses a page boundary, we need an additional clock cycle for this instruction
         if (self.addr_abs & 0xFF00) != (hi << 8)
         {
-            return 1;
+            1
         }
         else
         {
-            return 0;	
+            0	
         }
     }
 
@@ -255,7 +259,7 @@ impl Cpu6502
             self.addr_abs = ((hi as u16) << 8) | lo as u16;
         }
 
-        return 0;
+        0
     }
 
     // The read 8-bit address is offset by X and used to read the 16-bit absolute address
@@ -273,7 +277,7 @@ impl Cpu6502
 
         self.addr_abs = ((hi as u16) << 8) | lo as u16;
 
-        return 0;
+        0
     }
 
     // The read 8-bit address is read from the zero page as a 16-bit address, then offset by Y
@@ -295,11 +299,11 @@ impl Cpu6502
 
         if (self.addr_abs & 0xFF00) != ((hi as u16) << 8)
         {
-            return 1;
+            1
         }
         else
         {
-            return 0;
+            0
         }
     }
 
@@ -347,7 +351,7 @@ impl Cpu6502
         // Load the result into the accumulator
         self.a = (temp & 0x00FF) as u8;
 
-        return 1;
+        1
     }
 
     // Instruction: Bitwise Logic AND
@@ -355,10 +359,10 @@ impl Cpu6502
     pub fn and(&mut self) -> u8
     {
         self.fetch();
-        self.a = self.a & self.fetched_data;
+        self.a &= self.fetched_data;
         self.set_flag(Flags6502::Z, self.a == 0x00); // Zero
         self.set_flag(Flags6502::N, self.a & 0x80 == 0x80); // Negative
-        return 1;
+        1
     }
     
     // Instruction: Arithmetic Shift Left
@@ -380,7 +384,7 @@ impl Cpu6502
             self.cpu_write(self.addr_abs, (temp & 0x00FF) as u8);
         }
 
-        return 0;
+        0
     }
 
     fn branch(&mut self)
@@ -405,7 +409,7 @@ impl Cpu6502
         {
            self.branch();
         }
-        return 0;
+        0
     }
 
     // Instruction: Branch if Carry Set
@@ -416,7 +420,7 @@ impl Cpu6502
         {
             self.branch();
         }
-        return 0;
+        0
     }
 
     // Instruction: Branch if Equal
@@ -427,7 +431,7 @@ impl Cpu6502
         {
             self.branch();
         }
-        return 0;
+        0
     }
 
     // Instruction: Bit Test
@@ -440,7 +444,7 @@ impl Cpu6502
         self.set_flag(Flags6502::N, self.fetched_data & (1 << 7) == (1 << 7)); // Negative
         self.set_flag(Flags6502::V, self.fetched_data & (1 << 6) == (1 << 6)); // Overflow
 
-        return 0;
+        0
     }
 
     // Instruction: Branch if Negative
@@ -451,7 +455,7 @@ impl Cpu6502
         {
             self.branch();
         }
-        return 0;
+        0
     }
 
     // Instruction: Branch if not equal
@@ -462,7 +466,7 @@ impl Cpu6502
         {
             self.branch();
         }
-        return 0;
+        0
     }
 
     // Instruction: Branch if Positive
@@ -473,7 +477,7 @@ impl Cpu6502
         {
             self.branch();
         }
-        return 0;
+        0
     }
 
     fn write_pc_to_stack(&mut self)
@@ -520,7 +524,7 @@ impl Cpu6502
         self.pc = lo as u16 |
                     ((hi as u16) << 8);
 
-        return 0;
+        0
     }
 
     // Instruction: Branch if Overflow Clear
@@ -531,7 +535,7 @@ impl Cpu6502
         {
             self.branch();
         }
-        return 0;
+        0
     }
 
     // Instruction: Branch if Overflow Set
@@ -542,7 +546,7 @@ impl Cpu6502
         {
             self.branch();
         }
-        return 0;
+        0
     }
 
     // Instruction: Clear Carry Flag
@@ -550,7 +554,7 @@ impl Cpu6502
     pub fn clc(&mut self) -> u8 
     {
         self.set_flag(Flags6502::C, false);
-        return 0;
+        0
     }
 
     // Instruction: Clear Decimal Flag
@@ -558,7 +562,7 @@ impl Cpu6502
     pub fn cld(&mut self) -> u8 
     {
         self.set_flag(Flags6502::D, false);
-        return 0;
+        0
     }
 
     // Instruction: Disable Interrupts / Clear Interrupt Flag
@@ -566,7 +570,7 @@ impl Cpu6502
     pub fn cli(&mut self) -> u8 
     {
         self.set_flag(Flags6502::I, false);
-        return 0;
+        0
     }
 
     // Instruction: Clear Overflow Flag
@@ -574,7 +578,7 @@ impl Cpu6502
     pub fn clv(&mut self) -> u8 
     {
         self.set_flag(Flags6502::V, false);
-        return 0;
+        0
     }
 
     fn cmp_helper(&mut self, var: u16)
@@ -590,21 +594,21 @@ impl Cpu6502
     {
         let temp_a = self.a as u16;
         self.cmp_helper(temp_a);
-        return 1;
+        1
     }
 
     pub fn cpx(&mut self) -> u8 
     {
         let temp_x = self.x as u16;
         self.cmp_helper(temp_x);
-        return 0;
+        0
     }
 
     pub fn cpy(&mut self) -> u8 
     {
         let temp_y = self.y as u16;
         self.cmp_helper(temp_y);
-        return 0;
+        0
     }
 
     pub fn dec(&mut self) -> u8 
@@ -615,7 +619,7 @@ impl Cpu6502
         self.set_flag(Flags6502::Z, (temp & 0x00FF) == 0x0000);
         self.set_flag(Flags6502::N, (temp & 0x0080) == 0x0080);
 
-        return 0;
+        0
     }
 
     // Instruction: Decrement X Register
@@ -625,7 +629,7 @@ impl Cpu6502
         self.x = self.x.wrapping_sub(1);
         self.set_flag(Flags6502::Z, self.x == 0x00);
         self.set_flag(Flags6502::N, (self.x & 0x80) == 0x80);
-        return 0;
+        0
     }
 
     // Instruction: Decrement Y Register
@@ -635,7 +639,7 @@ impl Cpu6502
         self.y = self.y.wrapping_sub(1);
         self.set_flag(Flags6502::Z, self.y == 0x00);
         self.set_flag(Flags6502::N, (self.y & 0x80) == 0x80);
-        return 0;
+        0
     }
 
     // Instruction: Bitwise Logic XOR
@@ -643,10 +647,10 @@ impl Cpu6502
     pub fn eor(&mut self) -> u8 
     {
         self.fetch();
-        self.a = self.a ^ self.fetched_data;
+        self.a ^= self.fetched_data;
         self.set_flag(Flags6502::Z, self.a == 0x00);
         self.set_flag(Flags6502::N, (self.a & 0x80) == 0x80);
-        return 0;
+        0
     }
 
     // Instruction: Increment Value at Memory Location
@@ -658,7 +662,7 @@ impl Cpu6502
         self.cpu_write(self.addr_abs, (temp & 0x00FF) as u8);
         self.set_flag(Flags6502::Z, (temp & 0x00FF) == 0x0000);
         self.set_flag(Flags6502::N, (temp & 0x0080) == 0x0080);
-        return 0;
+        0
     }
 
     // Instruction: Increment X Register
@@ -668,7 +672,7 @@ impl Cpu6502
         self.x = self.x.wrapping_add(1);
         self.set_flag(Flags6502::Z, self.x == 0x00);
         self.set_flag(Flags6502::N, (self.x & 0x80) == 0x80);
-        return 0;
+        0
     }
 
     // Instruction: Increment Y Register
@@ -678,7 +682,7 @@ impl Cpu6502
         self.y = self.y.wrapping_add(1);
         self.set_flag(Flags6502::Z, self.y == 0x00);
         self.set_flag(Flags6502::N, (self.y & 0x80) == 0x80);
-        return 0;
+        0
     }
 
     // Instruction: Jump To Location
@@ -686,7 +690,7 @@ impl Cpu6502
     pub fn jmp(&mut self) -> u8 
     {
         self.pc = self.addr_abs;
-        return 0;
+        0
     }
 
     // Instruction: Jump To Sub-Routine
@@ -697,7 +701,7 @@ impl Cpu6502
         self.pc -= 1;
         self.write_pc_to_stack();
         self.pc = self.addr_abs;
-        return 0;
+        0
     }
 
     fn load_helper_write<F>(&mut self, write_closure: F) where F: Fn(&mut Cpu6502)
@@ -715,22 +719,22 @@ impl Cpu6502
     pub fn lda(&mut self) -> u8 
     {
         self.load_helper_write(|x| x.a = x.fetched_data);
-        self.load_helper_update_flags(|x| return x.a);
-        return 1;
+        self.load_helper_update_flags(|x| x.a);
+        1
     }
 
     pub fn ldx(&mut self) -> u8 
     {
         self.load_helper_write(|x| x.x = x.fetched_data);
-        self.load_helper_update_flags(|x| return x.x);
-        return 1;
+        self.load_helper_update_flags(|x| x.x);
+        1
     }
 
     pub fn ldy(&mut self) -> u8 
     {
         self.load_helper_write(|x| x.y = x.fetched_data);
-        self.load_helper_update_flags(|x| return x.y);
-        return 1;
+        self.load_helper_update_flags(|x| x.y);
+        1
     }
 
     pub fn lsr(&mut self) -> u8 
@@ -751,7 +755,7 @@ impl Cpu6502
             self.cpu_write(self.addr_abs, (temp & 0x00FF) as u8);
         }
 
-        return 0;
+        0
     }
 
     // Instruction: No-op
@@ -760,13 +764,13 @@ impl Cpu6502
         // There are different kinds of NOPs depending on the opcode
         match self.opcode
         {
-            0x1C => return 1,
-            0x3C => return 1,
-            0x5C => return 1,
-            0x7C => return 1,
-            0xDC => return 1,
-            0xFC => return 1,
-            _ => return 0
+            0x1C => 1,
+            0x3C => 1,
+            0x5C => 1,
+            0x7C => 1,
+            0xDC => 1,
+            0xFC => 1,
+            _ => 0
         }
     }
 
@@ -775,11 +779,11 @@ impl Cpu6502
     pub fn ora(&mut self) -> u8 
     {
         self.fetch();
-        self.a = self.a | self.fetched_data;
+        self.a |= self.fetched_data;
 
         self.set_flag(Flags6502::Z, self.a == 0x00); // Zero
         self.set_flag(Flags6502::N, self.a & 0x80 == 0x80); // Negative
-        return 0;
+        0
     }
 
     // Instruction: Push Accumulator to Stack
@@ -788,7 +792,7 @@ impl Cpu6502
     {
         self.cpu_write(Cpu6502::STACK_START_ADDRESS + self.stkp as u16, self.a);
         self.stkp -= 1;
-        return 0;
+        0
     }
     
     // Instruction: Push Status Register to Stack
@@ -800,7 +804,7 @@ impl Cpu6502
         // self.set_flag(Flags6502::B, false);
         // self.set_flag(Flags6502::U, false);
         self.stkp -= 1;
-        return 0;
+        0
     }
 
     // Instruction: Pop Accumulator off Stack
@@ -815,7 +819,7 @@ impl Cpu6502
 
         self.set_flag(Flags6502::Z, self.a == 0x00); // Zero
         self.set_flag(Flags6502::N, self.a & 0x80 == 0x80); // Negative
-        return 0;
+        0
     }
 
     // Instruction: Pop Status Register off Stack
@@ -830,7 +834,7 @@ impl Cpu6502
         
         self.set_flag(Flags6502::U, true);
         self.set_flag(Flags6502::B, false);
-        return 0;
+        0
     }
 
     // Instruction: Rotate Left
@@ -853,7 +857,7 @@ impl Cpu6502
             self.cpu_write(self.addr_abs, (temp & 0x00FF) as u8);
         }
 
-        return 0;
+        0
     }
 
     // Instruction: Rotate Right
@@ -876,7 +880,7 @@ impl Cpu6502
             self.cpu_write(self.addr_abs, (temp & 0x00FF) as u8);
         }
 
-        return 0;
+        0
     }
 
     // Instruction: Return from Interrupt
@@ -894,7 +898,7 @@ impl Cpu6502
         self.status &= !(Flags6502::U as u8);
 
         self.read_pc_from_stack();
-        return 0;
+        0
     }
 
     // Instruction: Return from subroutine
@@ -903,7 +907,7 @@ impl Cpu6502
     {
         self.read_pc_from_stack();
         self.pc += 1;
-        return 0;
+        0
     }
 
     // Explanation borrowed from https://github.com/OneLoneCoder/olcNES/blob/master/Part%232%20-%20CPU/olc6502.cpp
@@ -954,7 +958,7 @@ impl Cpu6502
         // Load the result into the accumulator
         self.a = (temp & 0x00FF) as u8;
 
-        return 1;
+        1
     }
 
     // Instruction: Set Carry Flag
@@ -962,7 +966,7 @@ impl Cpu6502
     pub fn sec(&mut self) -> u8 
     {
         self.set_flag(Flags6502::C, true);
-        return 0;
+        0
     }
 
     // Instruction: Set Decimal Flag
@@ -970,7 +974,7 @@ impl Cpu6502
     pub fn sed(&mut self) -> u8 
     {
         self.set_flag(Flags6502::D, true);
-        return 0;
+        0
     }
 
     // Instruction: Set Interrupt Flag / Enable Interrupts
@@ -978,7 +982,7 @@ impl Cpu6502
     pub fn sei(&mut self) -> u8 
     {
         self.set_flag(Flags6502::I, true);
-        return 0;
+        0
     }
 
     // Instruction: Store Accumulator at address
@@ -986,7 +990,7 @@ impl Cpu6502
     pub fn sta(&mut self) -> u8 
     {
         self.cpu_write(self.addr_abs, self.a);
-        return 0;
+        0
     }
 
     // Instruction: Store X at address
@@ -994,7 +998,7 @@ impl Cpu6502
     pub fn stx(&mut self) -> u8 
     {
         self.cpu_write(self.addr_abs, self.x);
-        return 0;
+        0
     }
 
     // Instruction: Store Y at address
@@ -1002,7 +1006,7 @@ impl Cpu6502
     pub fn sty(&mut self) -> u8 
     {
         self.cpu_write(self.addr_abs, self.y);
-        return 0;
+        0
     }
 
     // Instruction: Transfer Accumulator to X Register
@@ -1012,7 +1016,7 @@ impl Cpu6502
         self.x = self.a;
         self.set_flag(Flags6502::Z, self.x == 0x00); // Zero
         self.set_flag(Flags6502::N, self.x & 0x80 == 0x80); // Negative
-        return 0;
+        0
     }
 
     // Instruction: Transfer Accumulator to Y Register
@@ -1022,7 +1026,7 @@ impl Cpu6502
         self.y = self.a;
         self.set_flag(Flags6502::Z, self.y == 0x00); // Zero
         self.set_flag(Flags6502::N, self.y & 0x80 == 0x80); // Negative
-        return 0;
+        0
     }
 
     // Instruction: Transfer Stack Pointer to X
@@ -1032,7 +1036,7 @@ impl Cpu6502
         self.x = self.stkp;
         self.set_flag(Flags6502::Z, self.x == 0x00); // Zero
         self.set_flag(Flags6502::N, self.x & 0x80 == 0x80); // Negative
-        return 0;
+        0
     }
 
     // Instruction: Transfer X to A
@@ -1042,7 +1046,7 @@ impl Cpu6502
         self.a = self.x;
         self.set_flag(Flags6502::Z, self.a == 0x00); // Zero
         self.set_flag(Flags6502::N, self.a & 0x80 == 0x80); // Negative
-        return 0;
+        0
     }
 
     // Instruction: Transfer X to Stack pointer
@@ -1050,7 +1054,7 @@ impl Cpu6502
     pub fn txs(&mut self) -> u8 
     {
         self.stkp = self.x;
-        return 0;
+        0
     }
 
     // Instruction: Transfer Y to A
@@ -1060,7 +1064,7 @@ impl Cpu6502
         self.a = self.y;
         self.set_flag(Flags6502::Z, self.a == 0x00); // Zero
         self.set_flag(Flags6502::N, self.a & 0x80 == 0x80); // Negative
-        return 0;
+        0
     }
 
     // The following are unofficial opcodes but are tested by nestest.rom
@@ -1071,7 +1075,7 @@ impl Cpu6502
         self.x = self.fetched_data;
         self.set_flag(Flags6502::Z, self.a == 0x00);
         self.set_flag(Flags6502::N, (self.a & 0x80) == 0x80);
-        return 1;
+        1
     }
 
     pub fn sax(&mut self) -> u8
@@ -1084,7 +1088,7 @@ impl Cpu6502
         //self.set_flag(Flags6502::C, self.x >= self.fetched_data);
         //self.set_flag(Flags6502::Z, self.x == 0x00);
         //self.set_flag(Flags6502::N, (self.x & 0x80) == 0x80);
-        return 0;
+        0
     }
 
     pub fn dcp(&mut self) -> u8
@@ -1098,7 +1102,7 @@ impl Cpu6502
         self.set_flag(Flags6502::C, self.a >= result_u8);
         self.set_flag(Flags6502::Z, (temp & 0x00FF) == 0x0000);
         self.set_flag(Flags6502::N, temp & 0x0080 == 0x0080);
-        return 0;
+        0
     }
 
     // Also called ins or isc
@@ -1125,7 +1129,7 @@ impl Cpu6502
         // Load the result into the accumulator
         self.a = (temp & 0x00FF) as u8;
 
-        return 0;
+        0
     }
 
     pub fn slo(&mut self) -> u8
@@ -1134,12 +1138,12 @@ impl Cpu6502
         let temp: u16 = (self.fetched_data as u16) << 1;
         self.set_flag(Flags6502::C, (temp & 0xFF00) > 0); // Carry
 
-        self.a = self.a | (temp as u8);
+        self.a |= temp as u8;
         self.set_flag(Flags6502::Z, self.a == 0x00); // Zero
         self.set_flag(Flags6502::N, self.a & 0x80 == 0x80); // Negative
         self.cpu_write(self.addr_abs, (temp & 0x00FF) as u8);
 
-        return 0;
+        0
     }
 
     pub fn rla(&mut self) -> u8
@@ -1148,21 +1152,21 @@ impl Cpu6502
         let temp: u16 = ((self.fetched_data as u16) << 1) | self.get_flag(Flags6502::C) as u16;
         self.set_flag(Flags6502::C, temp & 0xFF00 > 0); // Carry
 
-        self.a = self.a & (temp as u8);
+        self.a &= temp as u8;
         self.set_flag(Flags6502::Z, self.a == 0x00); // Zero
         self.set_flag(Flags6502::N, self.a & 0x80 == 0x80); // Negative
         self.cpu_write(self.addr_abs, (temp & 0x00FF) as u8);
-        return 0;
+        0
     }
 
     pub fn anc(&mut self) -> u8
     {
         self.fetch();
-        self.a = self.a & self.fetched_data;
+        self.a &= self.fetched_data;
         self.set_flag(Flags6502::C, self.a & 0x80 == 0x80); // Carry
         self.set_flag(Flags6502::Z, self.a == 0x00); // Zero
         self.set_flag(Flags6502::N, self.a & 0x80 == 0x80); // Negative
-        return 0;
+        0
     }
 
     // Also known as LSE
@@ -1172,11 +1176,11 @@ impl Cpu6502
         self.fetch();
         self.set_flag(Flags6502::C, (self.fetched_data & 0x0001) == 0x0001); // Carry
         let temp: u16 = (self.fetched_data as u16) >> 1;
-        self.a = self.a ^ ((temp & 0x00FF) as u8);
+        self.a ^= (temp & 0x00FF) as u8;
         self.set_flag(Flags6502::Z, self.a == 0x00);
         self.set_flag(Flags6502::N, (self.a & 0x80) == 0x80);
         self.cpu_write(self.addr_abs, (temp & 0x00FF) as u8);
-        return 0;
+        0
     }
 
     pub fn rra(&mut self) -> u8
@@ -1191,7 +1195,7 @@ impl Cpu6502
         self.set_flag(Flags6502::C, result > 255);
         self.set_flag(Flags6502::Z, (result & 0x00FF) == 0);
 
-        let v: u16 = (!(self.a as u16 ^ temp as u16)) & ((self.a as u16 ^ result) & 0x0080);
+        let v: u16 = (!(self.a as u16 ^ temp)) & ((self.a as u16 ^ result) & 0x0080);
         self.set_flag(Flags6502::V, v != 0);
         self.set_flag(Flags6502::N, result & 0x80 == 0x80);
 
@@ -1199,7 +1203,7 @@ impl Cpu6502
         self.a = (result & 0x00FF) as u8;
         self.cpu_write(self.addr_abs, (temp & 0x00FF) as u8);
 
-        return 0;
+        0
     }
 
     pub fn kil(&mut self) -> u8 
@@ -1250,7 +1254,7 @@ impl Cpu6502
 
     pub fn new() -> Self
     {
-        let cpu = Cpu6502
+        Cpu6502
         {
             bus: None,
             cartridge: None,
@@ -1267,14 +1271,12 @@ impl Cpu6502
             cycles: 0x00,
             total_cycles: -1,
             ins: create_instruction_array!()
-        };
-
-        return cpu;
+        }
     }
 
     pub fn complete(&self) -> bool
     {
-        return self.cycles == 0;
+        self.cycles == 0
     }
 
     pub fn disassemble(&mut self, n_start: u16, n_end: u16, include_state: bool) -> BTreeMap<u16, String>
@@ -1301,13 +1303,13 @@ impl Cpu6502
                 None => panic!("Error, missing bus inside CPU")
             };
 
-            instruction += &String::from(format!("{:02X} ", opcode));
+            instruction += &format!("{:02X} ", opcode);
             let name = self.ins[opcode as usize].name.clone();
 
             let pad = |instruction_ref: &mut String, name_ref: &String| 
             {
                 let mut sub_1: i32 = 0;
-                if (*name_ref).starts_with("*")
+                if (*name_ref).starts_with('*')
                 {
                     sub_1 = -1;
                 }
@@ -1342,26 +1344,26 @@ impl Cpu6502
             else if self.ins[opcode as usize].addr_mode == Cpu6502::imm
             {
                 self.cpu_read(addr as u16, &mut value);
-                instruction += &String::from(format!("{:02X}", value));
+                instruction += &format!("{:02X}", value);
                 addr += 1;
                 pad(&mut instruction, &name);
-                instruction += &String::from(format!(" #${:02X}", value));
+                instruction += &format!(" #${:02X}", value);
             }
             else if self.ins[opcode as usize].addr_mode == Cpu6502::zp0
             {
                 self.cpu_read(addr as u16, &mut lo);
-                instruction += &String::from(format!("{:02X}", lo));
+                instruction += &format!("{:02X}", lo);
                 addr += 1;
                 pad(&mut instruction, &name);
 
                 let mut temp = 0;
                 self.cpu_read((lo as u16) & 0x00FF, &mut temp);
-                instruction += &String::from(format!(" ${:02X} = {:02X}", lo, temp));
+                instruction += &format!(" ${:02X} = {:02X}", lo, temp);
             }
             else if self.ins[opcode as usize].addr_mode == Cpu6502::zpx
             {
                 self.cpu_read(addr as u16, &mut lo);
-                instruction += &String::from(format!("{:02X}", lo));
+                instruction += &format!("{:02X}", lo);
                 addr += 1;
                 pad(&mut instruction, &name);
 
@@ -1369,12 +1371,12 @@ impl Cpu6502
                 let mut data = 0;
                 self.cpu_read(ind_addr, &mut data);
 
-                instruction += &String::from(format!(" ${:02X},X @ {:02X} = {:02X}", lo, ind_addr, data));
+                instruction += &format!(" ${:02X},X @ {:02X} = {:02X}", lo, ind_addr, data);
             }
             else if self.ins[opcode as usize].addr_mode == Cpu6502::zpy
             {
                 self.cpu_read(addr as u16, &mut lo);
-                instruction += &String::from(format!("{:02X}", lo));
+                instruction += &format!("{:02X}", lo);
                 addr += 1;
                 pad(&mut instruction, &name);
                 
@@ -1382,12 +1384,12 @@ impl Cpu6502
                 let mut data = 0;
                 self.cpu_read(ind_addr, &mut data);
 
-                instruction += &String::from(format!(" ${:02X},Y @ {:02X} = {:02X}", lo, ind_addr, data));
+                instruction += &format!(" ${:02X},Y @ {:02X} = {:02X}", lo, ind_addr, data);
             }
             else if self.ins[opcode as usize].addr_mode == Cpu6502::izx
             {
                 self.cpu_read(addr as u16, &mut lo);
-                instruction += &String::from(format!("{:02X}", lo));
+                instruction += &format!("{:02X}", lo);
                 addr += 1;
                 pad(&mut instruction, &name);
 
@@ -1400,12 +1402,12 @@ impl Cpu6502
                 let mut ind_data: u8 = 0;
                 self.cpu_read(ind_addr, &mut ind_data);
 
-                instruction += &String::from(format!(" (${:02X},X) @ {:02X} = {:04X} = {:02X}", ind, ind + self.x as u16, ind_addr, ind_data));
+                instruction += &format!(" (${:02X},X) @ {:02X} = {:04X} = {:02X}", ind, ind + self.x as u16, ind_addr, ind_data);
             }
             else if self.ins[opcode as usize].addr_mode == Cpu6502::izy
             {
                 self.cpu_read(addr as u16, &mut lo);
-                instruction += &String::from(format!("{:02X}", lo));
+                instruction += &format!("{:02X}", lo);
                 addr += 1;
                 pad(&mut instruction, &name);
 
@@ -1419,15 +1421,15 @@ impl Cpu6502
 
                 let mut ind_data: u8 = 0;
                 self.cpu_read(ind_addr_y, &mut ind_data);
-                instruction += &String::from(format!(" (${:02X}),Y = {:04X} @ {:04X} = {:02X}", ind, ind_addr, ind_addr_y, ind_data));
+                instruction += &format!(" (${:02X}),Y = {:04X} @ {:04X} = {:02X}", ind, ind_addr, ind_addr_y, ind_data);
             }
             else if self.ins[opcode as usize].addr_mode == Cpu6502::abs
             {
                 self.cpu_read(addr as u16, &mut lo);
-                instruction += &String::from(format!("{:02X} ", lo));
+                instruction += &format!("{:02X} ", lo);
                 addr += 1;
                 self.cpu_read(addr as u16, &mut hi);
-                instruction += &String::from(format!("{:02X}", hi));
+                instruction += &format!("{:02X}", hi);
                 addr += 1;
                 let cur_addr = ((hi as u16) << 8) | lo as u16;
                 pad(&mut instruction, &name);
@@ -1436,22 +1438,22 @@ impl Cpu6502
                     self.ins[opcode as usize].name.eq("JSR")
                     
                 {
-                    instruction += &String::from(format!(" ${:04X}", cur_addr));
+                    instruction += &format!(" ${:04X}", cur_addr);
                 }
                 else
                 {
                     let mut temp = 0;
                     self.cpu_read(cur_addr, &mut temp);
-                    instruction += &String::from(format!(" ${:04X} = {:02X}", cur_addr, temp));
+                    instruction += &format!(" ${:04X} = {:02X}", cur_addr, temp);
                 }
             }
             else if self.ins[opcode as usize].addr_mode == Cpu6502::abx
             {
                 self.cpu_read(addr as u16, &mut lo);
-                instruction += &String::from(format!("{:02X} ", lo));
+                instruction += &format!("{:02X} ", lo);
                 addr += 1;
                 self.cpu_read(addr as u16, &mut hi);
-                instruction += &String::from(format!("{:02X}", hi));
+                instruction += &format!("{:02X}", hi);
                 addr += 1;
                 let cur_addr = ((hi as u16) << 8) | lo as u16;
                 pad(&mut instruction, &name);
@@ -1460,15 +1462,15 @@ impl Cpu6502
                 let mut data = 0;
                 self.cpu_read(ind_addr, &mut data);
 
-                instruction += &String::from(format!(" ${:04X},X @ {:04X} = {:02X}", cur_addr, ind_addr, data));
+                instruction += &format!(" ${:04X},X @ {:04X} = {:02X}", cur_addr, ind_addr, data);
             }
             else if self.ins[opcode as usize].addr_mode == Cpu6502::aby
             {
                 self.cpu_read(addr as u16, &mut lo);
-                instruction += &String::from(format!("{:02X} ", lo));
+                instruction += &format!("{:02X} ", lo);
                 addr += 1;
                 self.cpu_read(addr as u16, &mut hi);
-                instruction += &String::from(format!("{:02X}", hi));
+                instruction += &format!("{:02X}", hi);
                 addr += 1;
                 let cur_addr = ((hi as u16) << 8) | lo as u16;
                 pad(&mut instruction, &name);
@@ -1477,15 +1479,15 @@ impl Cpu6502
                 let mut data = 0;
                 self.cpu_read(ind_addr, &mut data);
 
-                instruction += &String::from(format!(" ${:04X},Y @ {:04X} = {:02X}", cur_addr, ind_addr, data));
+                instruction += &format!(" ${:04X},Y @ {:04X} = {:02X}", cur_addr, ind_addr, data);
             }
             else if self.ins[opcode as usize].addr_mode == Cpu6502::ind
             {
                 self.cpu_read(addr as u16, &mut lo);
-                instruction += &String::from(format!("{:02X} ", lo));
+                instruction += &format!("{:02X} ", lo);
                 addr += 1;
                 self.cpu_read(addr as u16, &mut hi);
-                instruction += &String::from(format!("{:02X}", hi));
+                instruction += &format!("{:02X}", hi);
                 addr += 1;
                 let ptr = ((hi as u16) << 8) | lo as u16;
                 pad(&mut instruction, &name);
@@ -1506,15 +1508,15 @@ impl Cpu6502
                     offset_addr = ((hi as u16) << 8) | lo as u16;
                 }
 
-                instruction += &String::from(format!(" (${:04X}) = {:04X}", ptr, offset_addr));
+                instruction += &format!(" (${:04X}) = {:04X}", ptr, offset_addr);
             }
             else if self.ins[opcode as usize].addr_mode == Cpu6502::rel
             {
                 self.cpu_read(addr as u16, &mut value);
-                instruction += &String::from(format!("{:02X}", value));
+                instruction += &format!("{:02X}", value);
                 addr += 1;
                 pad(&mut instruction, &name);
-                instruction += &String::from(format!(" ${:04X}", addr as i32 + (value as i8) as i32));
+                instruction += &format!(" ${:04X}", addr as i32 + (value as i8) as i32);
             }
 
             if include_state
@@ -1523,13 +1525,13 @@ impl Cpu6502
                 let num_spaces = 47 - instruction.len();
                 let repeated_blanks = ' '.to_string().repeat(num_spaces);
                 instruction += &repeated_blanks;
-                instruction += &String::from(format!(" {:?}", self));
+                instruction += &format!(" {:?}", self);
             }
 
             map.insert(line_addr, instruction);
         }
 
-        return map;
+        map
     }
 
     fn perform_irq(&mut self, pc_read_addr: u16, num_cycles: u8)
@@ -1547,9 +1549,9 @@ impl Cpu6502
         // Read the new program counter location from a fixed address
         self.addr_abs = pc_read_addr;
         let mut lo: u8 = 0;
-        self.cpu_read(self.addr_abs + 0, &mut lo) as u16;
+        self.cpu_read(self.addr_abs, &mut lo);
         let mut hi: u8 = 0;
-        self.cpu_read(self.addr_abs + 1, &mut hi) as u16;
+        self.cpu_read(self.addr_abs + 1, &mut hi);
 
         self.pc = ((hi as u16) << 8) | (lo as u16);
 
@@ -1580,9 +1582,15 @@ impl Cpu6502
             self.fetched_data = read_result;
         }
 
-        return self.fetched_data;
+        self.fetched_data
     }
 
+}
+
+impl Default for Cpu6502 {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Resettable for Cpu6502
@@ -1591,7 +1599,7 @@ impl Resettable for Cpu6502
     {
         self.addr_abs = 0xFFFC;
         let mut lo: u8 = 0;
-        self.cpu_read(self.addr_abs + 0, &mut lo);
+        self.cpu_read(self.addr_abs, &mut lo);
         let mut hi: u8 = 0;
         self.cpu_read(self.addr_abs + 1, &mut hi);
     

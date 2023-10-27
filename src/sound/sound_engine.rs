@@ -1,25 +1,19 @@
 use std::sync::{Arc, Mutex};
-
-use fundsp::{hacker::*, prelude::PulseWave};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 
 use crate::{traits::Clockable, MainState};
 
-type OscillatorType = An<Pipe<f64, Stack<f64, Var<f64>, Var<f64>>, PulseWave<f64>>>;
+use super::oscillator::Oscillator;
 
 pub struct SoundEngine
 {
     sample_rate: u32,
     channels: usize, 
-    oscillators: Vec<OscillatorType>,
-    frequency: Vec<Shared<f64>>,
-    duty_cycle: Vec<Shared<f64>>,
-    harmonics: i32,
+    oscillators: Vec<Oscillator>,
     audio_time_per_system_sample: f64,
     audio_time_per_nes_clock: f64,
     audio_time: f64,
-    audio_sample: f64,
-    osc_sample: (f64, f64),
+    osc_sample: [(f64, f64); 4],
     emulator_tick_callback: fn() -> bool
 }
 
@@ -31,43 +25,11 @@ impl SoundEngine
             sample_rate: 0,
             channels: 0,
             oscillators: Vec::new(),
-            frequency: vec!(shared(440.0)),
-            duty_cycle: vec!(shared(0.5)),
-            harmonics: 1,
             audio_time_per_system_sample: 0.0,
             audio_time_per_nes_clock: 0.0,
             audio_time: 0.0,
-            audio_sample: 0.0,
-            osc_sample: (0.0, 0.0),
+            osc_sample: [(0.0, 0.0); 4],
             emulator_tick_callback
-        }
-    }
-
-    pub fn get_fundamental_freq(&mut self) -> f64
-    {
-        self.frequency[0].value()
-    }
-
-    pub fn get_duty_cycle(&mut self) -> f64
-    {
-        self.duty_cycle[0].value()
-    }
-
-    pub fn set_freq(&mut self, value: f64)
-    {
-        self.frequency[0].set_value(value);
-
-        for i in 1..self.harmonics
-        {
-            self.frequency[i as usize].set_value(value * (i as f64 + 1.0));
-        }
-    }
-
-    pub fn set_duty_cycle(&mut self, value: f64)
-    {
-        for i in 0..self.harmonics
-        {
-            self.duty_cycle[i as usize].set_value(value);
         }
     }
 
@@ -95,32 +57,28 @@ impl SoundEngine
                 }
 
                 let mut inner = engine.lock().unwrap();
+                let mut dsp_samples: [f64; 4] = [0.0; 4];
 
-                let mut sample: f64 = 0.0;
-                let osc_sample = inner.osc_sample;
-                inner.set_duty_cycle(osc_sample.0);
-                inner.set_freq(osc_sample.1);
-                println!("{} {}", inner.duty_cycle[0].value(), inner.frequency[0].value());
-                for osc in &mut inner.oscillators
+                (0..inner.oscillators.len()).for_each(|i: usize|
                 {
-                    sample += osc.get_mono();
-                }
-                sample /= inner.oscillators.len() as f64;
+                    let osc_sample = inner.osc_sample[i];
+                    let osc: &mut Oscillator = &mut inner.oscillators[i];
+
+                    osc.set_duty_cycle(osc_sample.0);
+                    osc.set_freq(osc_sample.1);
+                    dsp_samples[i] = osc.get_mono();
+                });
+
+                let final_mix = ((1.0 * dsp_samples[0]) - 0.8) * 0.1 +
+                                ((1.0 * dsp_samples[1]) - 0.8) * 0.1;
+                                //((2.0 * (noise_output - 0.5))) * 0.1;
 
                 for sample_slot in frame.iter_mut()
                 {
-                    *sample_slot = sample as f32;
+                    *sample_slot = final_mix as f32;
                 }
             }
         }
-    }
-
-    fn set_sample_rate(&mut self, sample_rate: u32)
-    {
-        self.sample_rate = sample_rate;
-        self.audio_time_per_system_sample = 1.0 / self.sample_rate as f64;
-        self.audio_time_per_nes_clock = 1.0 / 5369318.0; // PPU Clock Frequency, based on NTSC NES core frequency
-        println!("{} {}", self.audio_time_per_system_sample, self.audio_time_per_nes_clock);
     }
 
     pub fn initialize(engine: Arc<Mutex<SoundEngine>>) -> cpal::Stream
@@ -132,29 +90,20 @@ impl SoundEngine
         let cloned_engine = engine.clone();
         let mut inner = cloned_engine.lock().unwrap();
         {
-            inner.set_sample_rate(supported_config.sample_rate().0);
+            inner.audio_time_per_system_sample = 1.0 / supported_config.sample_rate().0 as f64;
+            inner.audio_time_per_nes_clock = 1.0 / 5369318.0; // PPU Clock Frequency, based on NTSC NES core frequency
+            inner.sample_rate = supported_config.sample_rate().0;
             inner.channels = supported_config.channels() as usize;
 
-            println!("Device is: {}", device.name().unwrap());
-            println!("sr: {}, ch: {}", inner.sample_rate, inner.channels);
-            println!("sample format: {}", supported_config.sample_format());
 
-            for i in 0..inner.harmonics
-            {
-                if i != 0
-                {
-                    // Add the appropriate harmonic frequencies
-                    let new_freq = shared(inner.frequency[0].value() * (i as f64 + 1.0));
-                    inner.frequency.push(new_freq);
+            // Create NES oscillators
+            let mut pulse_1 = Oscillator::new(); 
+            pulse_1.set_sample_rate(inner.sample_rate as f64);
+            inner.oscillators.push(pulse_1);
 
-                    let new_dc = shared(inner.duty_cycle[0].value());
-                    inner.duty_cycle.push(new_dc);
-                }   
-
-                let mut osc = (var(&inner.frequency[i as usize]) | var(&inner.duty_cycle[i as usize])) >> pulse();
-                osc.set_sample_rate(inner.sample_rate as f64);
-                inner.oscillators.push(osc);
-            }
+            let mut pulse_2 = Oscillator::new(); 
+            pulse_2.set_sample_rate(inner.sample_rate as f64);
+            inner.oscillators.push(pulse_2);
         }
         drop(inner);
 
@@ -183,7 +132,6 @@ impl Clockable for SoundEngine
         if self.audio_time >= self.audio_time_per_system_sample
         {
             self.audio_time -= self.audio_time_per_system_sample;
-            // self.audio_sample = MainState::get_instance().apu.as_ref().unwrap().lock().unwrap().get_output_sample();
             self.osc_sample = MainState::get_instance().apu.as_ref().unwrap().lock().unwrap().get_osc_data();
             return true;
         }
