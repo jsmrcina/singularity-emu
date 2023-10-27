@@ -130,7 +130,7 @@ impl Ppu2c02
 {
     pub fn new() -> Self
     {
-        let s = Ppu2c02
+        Ppu2c02
         {
             cartridge: None,
             patterns: Box::new([[0u8; 4096]; 2]),
@@ -158,9 +158,7 @@ impl Ppu2c02
             fg_shifter_info: FgShifterInfo { pattern_lo: [0; 8] , pattern_hi: [0; 8] },
             sprite_zero_hit_possible: false,
             sprite_zero_being_rendered: false
-        };
-
-        return s;
+        }
     }
 
     pub fn connect_cartridge(&mut self, cartridge: Arc<Mutex<Cart>>)
@@ -170,7 +168,7 @@ impl Ppu2c02
 
     pub fn frame_complete(&self) -> bool
     {
-        return self.frame_complete;
+        self.frame_complete
     }
 
     pub fn set_frame_complete(&mut self, frame_complete: bool)
@@ -180,7 +178,7 @@ impl Ppu2c02
 
     pub fn get_nmi(&self) -> bool
     {
-        return self.nmi;
+        self.nmi
     }
 
     pub fn set_nmi(&mut self, nmi: bool)
@@ -190,12 +188,12 @@ impl Ppu2c02
 
     pub fn get_cycle(&self) -> i32
     {
-        return self.cycle;
+        self.cycle
     }
 
     pub fn get_scan_line(&self) -> i32
     {
-        return self.scan_line;
+        self.scan_line
     }
 
     pub fn set_oam_memory_at_addr(&mut self, addr: u8, data: u8)
@@ -233,10 +231,10 @@ impl Ppu2c02
                 self.sprite_scanline.len() * std::mem::size_of::<ObjectAttributeEntry>()
             );
 
-            for i in 0..sprite_scanline_as_ptr.len()
+            (0..sprite_scanline_as_ptr.len()).for_each(|i: usize|
             {
                 sprite_scanline_as_ptr[i] = 0xFF;
-            }
+            });
         }
 
         self.sprite_count = 0;
@@ -260,7 +258,7 @@ impl Ppu2c02
         
         // We've stored all the colors into our pal_colors array so we can just directly index it.
         // Avoid an overrun
-        return self.renderer.pal_colors[(palette_data & 0x3F) as usize];
+        self.renderer.pal_colors[(palette_data & 0x3F) as usize]
     }
 
     // pattern_index is either 0 or 1 depending on whether we're reading from the left or right side of the pattern table
@@ -286,7 +284,7 @@ impl Ppu2c02
                 for row in 0..TILE_ROW_BITS
                 {
                     let mut tile_lsb: u8 = 0;
-                    self.ppu_read(pattern_index * PATTERN_TABLE_HALF_SIZE + offset + row + 0, &mut tile_lsb);
+                    self.ppu_read(pattern_index * PATTERN_TABLE_HALF_SIZE + offset + row, &mut tile_lsb);
                     let mut tile_msb: u8 = 0;
                     self.ppu_read(pattern_index * PATTERN_TABLE_HALF_SIZE + offset + row + TILE_TOTAL_BYTES, &mut tile_msb);
 
@@ -392,7 +390,7 @@ impl Ppu2c02
         }
         else
         {
-            self.bg_shifter_info.attrib_lo = (self.bg_shifter_info.attrib_lo & 0xFF00) | 0x00;
+            self.bg_shifter_info.attrib_lo &= 0xFF00;
         }
 
         if self.bg_next_info.attrib & 0b10 == 0b10
@@ -401,7 +399,7 @@ impl Ppu2c02
         }
         else
         {
-            self.bg_shifter_info.attrib_hi = (self.bg_shifter_info.attrib_hi & 0xFF00) | 0x00;
+            self.bg_shifter_info.attrib_hi &= 0xFF00;
         }   
     }
 
@@ -435,6 +433,12 @@ impl Ppu2c02
     pub fn get_name_table(&self) -> Box<[[u8; 1024]; 2]>
     {
         self.nametables.clone()
+    }
+}
+
+impl Default for Ppu2c02 {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -472,27 +476,27 @@ impl ReadWrite for Ppu2c02
                 self.ctrl.set_field(data);
                 self.tram_addr.set_name_table_x(self.ctrl.nametable_x());
                 self.tram_addr.set_name_table_y(self.ctrl.nametable_y());
-                return true;
+                true
             }
             // Mask
             0x0001 =>
             {
                 self.mask.set_field(data);
-                return true;
+                true
             }
             // Status
-            0x0002 => return true,
+            0x0002 => true,
             // OAM Address
             0x0003 =>
             {
                 self.oam_addr = data;
-                return true;
+                true
             }
             // OAM Data
             0x0004 =>
             {
                 self.set_oam_memory_at_addr(self.oam_addr, data);
-                return true;
+                true
             }
             // Scroll
             0x0005 =>
@@ -510,7 +514,7 @@ impl ReadWrite for Ppu2c02
                     self.address_latch = false;
                 }
 
-                return true;
+                true
             },
             // PPU Address
             0x0006 =>
@@ -526,7 +530,7 @@ impl ReadWrite for Ppu2c02
                     self.vram_addr.set_field(self.tram_addr.get_field());
                     self.address_latch = false;
                 }
-                return true;
+                true
             }
             // PPU Data
             0x0007 =>
@@ -540,7 +544,7 @@ impl ReadWrite for Ppu2c02
                 {
                     self.vram_addr.set_field(self.vram_addr.get_field() + 1);
                 }
-                return true;
+                true
             }
             _ => panic!("Non addressable memory in PPU accessed during CPU read")
         }
@@ -556,13 +560,13 @@ impl ReadWrite for Ppu2c02
             0x0000 =>
             {
                 *data = 0;
-                 return true
+                true
             },
             // Mask
             0x0001 =>
             {
                 *data = 0;
-                 return true
+                true
             },
             // Status
             0x0002 =>
@@ -574,20 +578,20 @@ impl ReadWrite for Ppu2c02
                 self.status.set_vertical_blank(false);
                 self.address_latch = false;
 
-                return true;
+                true
             }
             // OAM Status
-            0x0003 => return true,
+            0x0003 => true,
             // OAM Data
             0x0004 =>
             {
                 *data = self.get_oam_memory_at_addr(self.oam_addr);
-                return true;
+                true
             }
             // Scroll
-            0x0005 => return true,
+            0x0005 => true,
             // PPU Address
-            0x0006 => return true,
+            0x0006 => true,
             // PPU Data
             0x0007 =>
             {
@@ -613,7 +617,7 @@ impl ReadWrite for Ppu2c02
                     self.vram_addr.set_field(self.vram_addr.get_field() + 1);
                 }
 
-                return true;
+                true
             }
             _ => panic!("Non addressable memory in PPU accessed during CPU read")
         }
@@ -642,7 +646,7 @@ impl ReadWrite for Ppu2c02
                 let pattern_index = mut_addr & 0x0FFF; 
                 self.patterns[pattern_half_index as usize][pattern_index as usize] = data;
             }
-            else if mut_addr >= 0x2000 && mut_addr < 0x3EFF
+            else if (0x2000..0x3EFF).contains(&mut_addr)
             {
                 mut_addr &= 0x0FFF;
 
@@ -659,34 +663,36 @@ impl ReadWrite for Ppu2c02
                                 {
                                     self.nametables[0][(mut_addr & 0x03FF) as usize] = data;
                                 }
-                                else if mut_addr >= 0x0400 && mut_addr <= 0x07FF
+                                else if (0x0400..=0x07FF).contains(&mut_addr)
                                 {
                                     self.nametables[1][(mut_addr & 0x03FF) as usize] = data;
                                 }
-                                else if mut_addr >= 0x0800 && mut_addr <= 0x0BFF
+                                else if (0x0800..=0x0BFF).contains(&mut_addr)
                                 {
                                     self.nametables[0][(mut_addr & 0x03FF) as usize] = data;
                                 }
-                                else if mut_addr >= 0x0C00 && mut_addr <= 0x0FFF
+                                else if (0x0C00..=0x0FFF).contains(&mut_addr)
                                 {
                                     self.nametables[1][(mut_addr & 0x03FF) as usize] = data;
                                 }
                             },
                             MirrorMode::Horizontal =>
                             {
+                                // This is cleaner to read
+                                #[allow(clippy::if_same_then_else)]
                                 if mut_addr <= 0x03FF
                                 {
                                     self.nametables[0][(mut_addr & 0x03FF) as usize] = data;
                                 }
-                                else if mut_addr >= 0x0400 && mut_addr <= 0x07FF
+                                else if (0x0400..=0x07FF).contains(&mut_addr)
                                 {
                                     self.nametables[0][(mut_addr & 0x03FF) as usize] = data;
                                 }
-                                else if mut_addr >= 0x0800 && mut_addr <= 0x0BFF
+                                else if (0x0800..=0x0BFF).contains(&mut_addr)
                                 {
                                     self.nametables[1][(mut_addr & 0x03FF) as usize] = data;
                                 }
-                                else if mut_addr >= 0x0C00 && mut_addr <= 0x0FFF
+                                else if (0x0C00..=0x0FFF).contains(&mut_addr)
                                 {
                                     self.nametables[1][(mut_addr & 0x03FF) as usize] = data;
                                 }
@@ -697,7 +703,7 @@ impl ReadWrite for Ppu2c02
                     None => panic!("No cartridge inserted when querying mirror mode")
                 }
             }
-            else if mut_addr >= 0x3F00 && mut_addr <= 0x3FFF
+            else if (0x3F00..=0x3FFF).contains(&mut_addr)
             {
                 const BOTTOM_5_BITS_MASK: u16 = 0x001F;
                 let mut address_masked = mut_addr & BOTTOM_5_BITS_MASK;
@@ -715,7 +721,7 @@ impl ReadWrite for Ppu2c02
             }
         }
 
-        return handled;
+        handled
     }
 
     fn ppu_read(&self, address: u16, data: &mut u8) -> bool
@@ -745,7 +751,7 @@ impl ReadWrite for Ppu2c02
                 let pattern_index = mut_addr & 0x0FFF; 
                 *data = self.patterns[pattern_half_index as usize][pattern_index as usize];
             }
-            else if mut_addr >= 0x2000 && mut_addr < 0x3EFF
+            else if (0x2000..0x3EFF).contains(&mut_addr)
             {
                 mut_addr &= 0x0FFF;
 
@@ -762,34 +768,36 @@ impl ReadWrite for Ppu2c02
                                 {
                                     *data = self.nametables[0][(mut_addr & 0x03FF) as usize];
                                 }
-                                else if mut_addr >= 0x0400 && mut_addr <= 0x07FF
+                                else if (0x0400..=0x07FF).contains(&mut_addr)
                                 {
                                     *data = self.nametables[1][(mut_addr & 0x03FF) as usize];
                                 }
-                                else if mut_addr >= 0x0800 && mut_addr <= 0x0BFF
+                                else if (0x0800..=0x0BFF).contains(&mut_addr)
                                 {
                                     *data = self.nametables[0][(mut_addr & 0x03FF) as usize];
                                 }
-                                else if mut_addr >= 0x0C00 && mut_addr <= 0x0FFF
+                                else if (0x0C00..=0x0FFF).contains(&mut_addr)
                                 {
                                     *data = self.nametables[1][(mut_addr & 0x03FF) as usize];
                                 }
                             },
                             MirrorMode::Horizontal =>
                             {
+                                // This is cleaner to read
+                                #[allow(clippy::if_same_then_else)]
                                 if mut_addr <= 0x03FF
                                 {
                                     *data = self.nametables[0][(mut_addr & 0x03FF) as usize];
                                 }
-                                else if mut_addr >= 0x0400 && mut_addr <= 0x07FF
+                                else if (0x0400..=0x07FF).contains(&mut_addr)
                                 {
                                     *data = self.nametables[0][(mut_addr & 0x03FF) as usize];
                                 }
-                                else if mut_addr >= 0x0800 && mut_addr <= 0x0BFF
+                                else if (0x0800..=0x0BFF).contains(&mut_addr)
                                 {
                                     *data = self.nametables[1][(mut_addr & 0x03FF) as usize];
                                 }
-                                else if mut_addr >= 0x0C00 && mut_addr <= 0x0FFF
+                                else if (0x0C00..=0x0FFF).contains(&mut_addr)
                                 {
                                     *data = self.nametables[1][(mut_addr & 0x03FF) as usize];
                                 }
@@ -801,7 +809,7 @@ impl ReadWrite for Ppu2c02
                     None => panic!("No cartridge inserted when querying mirror mode")
                 }
             }
-            else if mut_addr >= 0x3F00 && mut_addr <= 0x3FFF
+            else if (0x3F00..=0x3FFF).contains(&mut_addr)
             {
                 const BOTTOM_5_BITS_MASK: u16 = 0x001F;
                 let mut address_masked = mut_addr & BOTTOM_5_BITS_MASK;
@@ -829,7 +837,7 @@ impl ReadWrite for Ppu2c02
             }
         }
 
-        return handled;
+        handled
     }
 }
 
@@ -903,7 +911,7 @@ impl Clockable for Ppu2c02
                         let mut lsb: u8 = 0;
                         let addr: u16 = ((self.ctrl.pattern_background() as u16) << 12)
                             | ((self.bg_next_info.id as u16) << 4)
-                            | (self.vram_addr.fine_y() + 0);
+                            | self.vram_addr.fine_y();
                         self.ppu_read(addr, &mut lsb);
                         self.bg_next_info.lsb = lsb;
                     }
@@ -964,19 +972,17 @@ impl Clockable for Ppu2c02
                         sprite_size = 16;
                     }
 
-                    if diff >= 0 && diff < sprite_size
+                    if (diff >= 0 && diff < sprite_size) &&
+                        self.sprite_count < 8
                     {
-                        if self.sprite_count < 8
+                        // Update whether sprite zero hit is possible
+                        if oam_entry == 0
                         {
-                            // Update whether sprite zero hit is possible
-                            if oam_entry == 0
-                            {
-                                self.sprite_zero_hit_possible = true;
-                            }
-
-                            self.sprite_scanline[self.sprite_count as usize] = self.oam[oam_entry as usize];
-                            self.sprite_count += 1;
+                            self.sprite_zero_hit_possible = true;
                         }
+
+                        self.sprite_scanline[self.sprite_count as usize] = self.oam[oam_entry as usize];
+                        self.sprite_count += 1;
                     }
 
                     oam_entry += 1;
@@ -1000,7 +1006,6 @@ impl Clockable for Ppu2c02
                     let mut sprite_pattern_bits_lo: u8 = 0;
                     let mut sprite_pattern_bits_hi: u8 = 0;
                     let sprite_pattern_addr_lo: u16;
-                    let sprite_pattern_addr_hi: u16;
 
                     if !self.ctrl.sprite_size()
                     {
@@ -1065,7 +1070,7 @@ impl Clockable for Ppu2c02
                         }
                     }
 
-                    sprite_pattern_addr_hi = sprite_pattern_addr_lo + 8;
+                    let sprite_pattern_addr_hi: u16 = sprite_pattern_addr_lo + 8;
                     self.ppu_read(sprite_pattern_addr_lo, &mut sprite_pattern_bits_lo);
                     self.ppu_read(sprite_pattern_addr_hi, &mut sprite_pattern_bits_hi);
 
@@ -1076,7 +1081,7 @@ impl Clockable for Ppu2c02
                             r = (r & 0xF0) >> 4 | (r & 0x0F) << 4;
                             r = (r & 0xCC) >> 2 | (r & 0x33) << 2;
                             r = (r & 0xAA) >> 1 | (r & 0x55) << 1;
-                            return r;
+                            r
                         };
 
                         sprite_pattern_bits_lo = flip_byte(sprite_pattern_bits_lo);
@@ -1094,15 +1099,12 @@ impl Clockable for Ppu2c02
             // Nothing happens
         }
 
-        if self.scan_line >= 241 && self.scan_line < 261
+        if self.scan_line == 241 && self.cycle == 1
         {
-            if self.scan_line == 241 && self.cycle == 1
+            self.status.set_vertical_blank(true);
+            if self.ctrl.enable_nmi()
             {
-                self.status.set_vertical_blank(true);
-                if self.ctrl.enable_nmi()
-                {
-                    self.nmi = true;
-                }
+                self.nmi = true;
             }
         }
 
@@ -1217,24 +1219,19 @@ impl Clockable for Ppu2c02
                 palette = bg_palette;
             }
 
-            if self.sprite_zero_hit_possible && self.sprite_zero_being_rendered
+            if (self.sprite_zero_hit_possible && self.sprite_zero_being_rendered) &&
+                (self.mask.render_background() && self.mask.render_sprites())
             {
-                if self.mask.render_background() && self.mask.render_sprites()
+                if !(self.mask.render_background_left() | self.mask.render_sprites_left())
                 {
-                    if !(self.mask.render_background_left() | self.mask.render_sprites_left())
+                    if self.cycle >= 9 && self.cycle < 258
                     {
-                        if self.cycle >= 9 && self.cycle < 258
-                        {
-                            self.status.set_sprite_zero_hit(true);
-                        }
+                        self.status.set_sprite_zero_hit(true);
                     }
-                    else
-                    {
-                        if self.cycle >= 1 && self.cycle < 258
-                        {
-                            self.status.set_sprite_zero_hit(true);
-                        }                        
-                    }
+                }
+                else if self.cycle >= 1 && self.cycle < 258
+                {
+                    self.status.set_sprite_zero_hit(true);
                 }
             }
         }
@@ -1281,7 +1278,7 @@ impl Ppu2c02Renderer
 {
     pub fn new() -> Self
     {
-        let ret = Ppu2c02Renderer
+        Ppu2c02Renderer
         {
             // Colors taken from NESDev wiki:
             // https://www.nesdev.org/wiki/PPU_palettes
@@ -1357,10 +1354,7 @@ impl Ppu2c02Renderer
             
             screen_pixels: Box::new([0u8; SCREEN_ROWS * SCREEN_COLS * PIXEL_DEPTH]),
             pattern_table: [Box::new([0u8; PATTERN_ROWS * PATTERN_COLS * PIXEL_DEPTH]), Box::new([0u8; PATTERN_ROWS * PATTERN_COLS * PIXEL_DEPTH])]
-        };
-
-        return ret;
-
+        }
     }
 
     pub fn render(&self, ctx: &mut Context, canvas: &mut ggez::graphics::Canvas, render_scale: f32)
@@ -1405,7 +1399,7 @@ impl Ppu2c02Renderer
                 }
 
                 let start_index = (row as usize * SCREEN_COLS * PIXEL_DEPTH) + (col as usize * PIXEL_DEPTH);
-                self.screen_pixels[start_index + 0] = color.to_rgba().0;
+                self.screen_pixels[start_index] = color.to_rgba().0;
                 self.screen_pixels[start_index + 1] = color.to_rgba().1;
                 self.screen_pixels[start_index + 2] = color.to_rgba().2;
                 self.screen_pixels[start_index + 3] = 255; // No alpha blending, always opaque
@@ -1420,7 +1414,7 @@ impl Ppu2c02Renderer
                 }
 
                 let start_index = (row as usize * PATTERN_COLS * PIXEL_DEPTH) + (col as usize * PIXEL_DEPTH);
-                self.pattern_table[surface_index][start_index + 0] = color.to_rgba().0;
+                self.pattern_table[surface_index][start_index] = color.to_rgba().0;
                 self.pattern_table[surface_index][start_index + 1] = color.to_rgba().1;
                 self.pattern_table[surface_index][start_index + 2] = color.to_rgba().2;
                 self.pattern_table[surface_index][start_index + 3] = 255; // No alpha blending, always opaque
@@ -1431,4 +1425,10 @@ impl Ppu2c02Renderer
     }
 
 
+}
+
+impl Default for Ppu2c02Renderer {
+    fn default() -> Self {
+        Self::new()
+    }
 }
