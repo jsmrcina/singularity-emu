@@ -19,6 +19,7 @@ pub struct SoundEngine
     audio_time_per_nes_clock: f64,
     audio_time: f64,
     audio_sample: f64,
+    osc_sample: (f64, f64),
     emulator_tick_callback: fn() -> bool
 }
 
@@ -37,25 +38,9 @@ impl SoundEngine
             audio_time_per_nes_clock: 0.0,
             audio_time: 0.0,
             audio_sample: 0.0,
+            osc_sample: (0.0, 0.0),
             emulator_tick_callback
         }
-    }
-
-    pub fn vary_freq(&mut self)
-    {
-        // let orig_fund_freq = self.get_fundamental_freq();
-        // self.set_freq(orig_fund_freq + 1.0);
-        // if self.get_fundamental_freq() >= 880.0
-        // {
-        //     self.set_freq(440.0);
-        // }
-
-        // let orig_duty_cycle = self.get_duty_cycle();
-        // self.set_duty_cycle(orig_duty_cycle + 0.1);
-        // if self.get_duty_cycle() >= 0.9
-        // {
-        //     self.set_duty_cycle(0.5);
-        // }
     }
 
     pub fn get_fundamental_freq(&mut self) -> f64
@@ -110,13 +95,17 @@ impl SoundEngine
                 }
 
                 let mut inner = engine.lock().unwrap();
-                let mut sample = 0.0;
+
+                let mut sample: f64 = 0.0;
+                let osc_sample = inner.osc_sample;
+                inner.set_duty_cycle(osc_sample.0);
+                inner.set_freq(osc_sample.1);
+                println!("{} {}", inner.duty_cycle[0].value(), inner.frequency[0].value());
                 for osc in &mut inner.oscillators
                 {
-                    // sample += osc.get_mono();
+                    sample += osc.get_mono();
                 }
                 sample /= inner.oscillators.len() as f64;
-
 
                 for sample_slot in frame.iter_mut()
                 {
@@ -194,7 +183,8 @@ impl Clockable for SoundEngine
         if self.audio_time >= self.audio_time_per_system_sample
         {
             self.audio_time -= self.audio_time_per_system_sample;
-            self.audio_sample = MainState::get_instance().apu.as_ref().unwrap().lock().unwrap().get_output_sample();
+            // self.audio_sample = MainState::get_instance().apu.as_ref().unwrap().lock().unwrap().get_output_sample();
+            self.osc_sample = MainState::get_instance().apu.as_ref().unwrap().lock().unwrap().get_osc_data();
             return true;
         }
 

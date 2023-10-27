@@ -396,9 +396,6 @@ impl MainState
         }
 
         self.process_controller_input(ctx);
-
-        // TODO: For testing, remove eventually
-        self.sound_engine.as_mut().unwrap().lock().unwrap().vary_freq();
         
         Ok(())
     }
