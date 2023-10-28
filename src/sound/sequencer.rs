@@ -8,9 +8,6 @@ pub struct Sequencer
     output: u8,
     enable: bool,
     callback: Option<fn(s: &mut u32)>,
-
-    frequency: f64,
-    duty_cycle: f64
 }
 
 impl Sequencer
@@ -25,9 +22,6 @@ impl Sequencer
             output: 0,
             enable: false,
             callback: None,
-
-            frequency: 0.0,
-            duty_cycle: 0.0
         }
     }
 
@@ -56,34 +50,24 @@ impl Sequencer
         self.reload = reload;
     }
 
+    pub fn get_timer(&self) -> u16
+    {
+        self.timer
+    }
+
     pub fn set_timer(&mut self, timer: u16)
     {
         self.timer = timer;
     }
 
+    pub fn get_enable(&self) -> bool
+    {
+        self.enable
+    }
+
     pub fn set_enable(&mut self, enable: bool)
     {
         self.enable = enable;
-    }
-
-    pub fn set_frequency(&mut self, frequency: f64)
-    {
-        self.frequency = frequency;
-    }
-
-    pub fn get_frequency(&self) -> f64
-    {
-        self.frequency
-    }
-
-    pub fn set_duty_cycle(&mut self, duty_cycle: f64)
-    {
-        self.duty_cycle = duty_cycle;
-    }
-
-    pub fn get_duty_cycle(&self) -> f64
-    {
-        self.duty_cycle
     }
 }
 

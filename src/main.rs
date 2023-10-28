@@ -1,5 +1,6 @@
 use bus::main_bus::MainBus;
 use cartridge::cart::Cart;
+use cpal::traits::StreamTrait;
 use cpu::cpu6502::Cpu6502;
 use gfx::ppu2c02::Ppu2c02;
 use sound::apu2a03::Apu2a03;
@@ -568,7 +569,14 @@ fn main() -> GameResult
         .build()?;
 
     let main_state = MainState::get_instance();
-    main_state.sound_thread = Some(SoundEngine::initialize(main_state.sound_engine.as_mut().unwrap().clone()));
+    let stream = SoundEngine::initialize(main_state.sound_engine.as_mut().unwrap().clone());
+
+    // Tell the APU what the sample rate is
+    main_state.apu.as_mut().unwrap().lock().unwrap().set_sample_rate(
+        main_state.sound_engine.as_ref().unwrap().lock().unwrap().get_sample_rate());
+
+    stream.play().unwrap();
+    main_state.sound_thread = Some(stream);
 
     let event_handling_state = EventHandlingState::new();
     event::run(ctx, event_loop, event_handling_state);

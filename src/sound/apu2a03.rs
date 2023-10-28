@@ -1,11 +1,23 @@
 use crate::traits::{ReadWrite, Clockable, Resettable};
 
-use super::sequencer::Sequencer;
+use super::{sequencer::Sequencer, envelope::Envelope, oscillator::Oscillator, sound_length_counter::{SoundLengthCounter, self}};
 
 pub struct Apu2a03
 {
-    pulse_1: Sequencer,
-    pulse_2: Sequencer,
+    pulse_1_sample: f64,
+    pulse_1_halt: bool,
+    pulse_1_seq: Sequencer,
+    pulse_1_osc: Oscillator,
+    pulse_1_env: Envelope,
+    pulse_1_lc: SoundLengthCounter,
+
+    pulse_2_sample: f64,
+    pulse_2_halt: bool,
+    pulse_2_seq: Sequencer,
+    pulse_2_osc: Oscillator,
+    pulse_2_env: Envelope,
+    pulse_2_lc: SoundLengthCounter,
+
     frame_clock_counter: u32,
     clock_counter: u32
 }
@@ -16,24 +28,38 @@ impl Apu2a03
     {
         Apu2a03
         {
-            pulse_1: Sequencer::new(),
-            pulse_2: Sequencer::new(),
+            pulse_1_sample: 0.0,
+            pulse_1_halt: false,
+            pulse_1_seq: Sequencer::new(),
+            pulse_1_osc: Oscillator::new(),
+            pulse_1_env: Envelope::new(),
+            pulse_1_lc: SoundLengthCounter::new(),
+
+            pulse_2_sample: 0.0,
+            pulse_2_halt: false,
+            pulse_2_seq: Sequencer::new(),
+            pulse_2_osc: Oscillator::new(),
+            pulse_2_env: Envelope::new(),
+            pulse_2_lc: SoundLengthCounter::new(),
+
             frame_clock_counter: 0,
             clock_counter: 0
         }
     }
 
-    // pub fn get_output_sample(&mut self) -> f64
-    // {
-        
-    // }
-
-    pub fn get_osc_data(&mut self) -> [(f64, f64); 4]
+    pub fn get_final_mix(&mut self) -> f64
     {
-        [(self.pulse_1.get_duty_cycle(), self.pulse_1.get_frequency()),
-            (self.pulse_2.get_duty_cycle(), self.pulse_2.get_frequency()),
-            (0.0, 0.0),
-            (0.0, 0.0)]
+        (self.pulse_1_sample - 0.8) * 0.3 +
+			(self.pulse_2_sample - 0.8) * 0.3 // +
+			// ((2.0 * (noise_output - 0.5))) * 0.1; 
+    }
+
+    pub fn set_sample_rate(&mut self, sample_rate: u32)
+    {
+        // Since we will be sampling our oscillators on this thread
+        // we need to adjust the sample rate appropriately.
+        self.pulse_1_osc.set_sample_rate(sample_rate * 6);
+        self.pulse_2_osc.set_sample_rate(sample_rate * 6);
     }
 }
 
@@ -55,26 +81,31 @@ impl ReadWrite for Apu2a03
                 {
                     0x00 =>
                     {
-                        self.pulse_1.set_sequence(0b00000001);
-                        self.pulse_1.set_duty_cycle(0.125);
+                        self.pulse_1_seq.set_sequence(0b00000001);
+                        self.pulse_1_osc.set_duty_cycle(0.125);
                     },
                     0x01 =>
                     {
-                        self.pulse_1.set_sequence(0b00000011);
-                        self.pulse_1.set_duty_cycle(0.250);
+                        self.pulse_1_seq.set_sequence(0b00000011);
+                        self.pulse_1_osc.set_duty_cycle(0.250);
                     },
                     0x02 =>
                     {
-                        self.pulse_1.set_sequence(0b00001111);
-                        self.pulse_1.set_duty_cycle(0.500);
+                        self.pulse_1_seq.set_sequence(0b00001111);
+                        self.pulse_1_osc.set_duty_cycle(0.500);
                     },
                     0x03 =>
                     {
-                        self.pulse_1.set_sequence(0b11111100);
-                        self.pulse_1.set_duty_cycle(0.750);
+                        self.pulse_1_seq.set_sequence(0b11111100);
+                        self.pulse_1_osc.set_duty_cycle(0.750);
                     },
                     _ => panic!("Impossible")
                 }
+
+                self.pulse_1_halt = data & 0x20 == 0x20;
+                self.pulse_1_env.set_volume(data as u16 & 0x0F);
+                self.pulse_1_env.set_disable(data as u16 & 0x10 == 0x10);
+
                 true
             },
             0x4001 =>
@@ -83,13 +114,15 @@ impl ReadWrite for Apu2a03
             },
             0x4002 =>
             {
-                self.pulse_1.set_reload(self.pulse_1.get_reload() & 0xFF00 | data as u16);
+                self.pulse_1_seq.set_reload(self.pulse_1_seq.get_reload() & 0xFF00 | data as u16);
                 true
             },
             0x4003 =>
             {
-                self.pulse_1.set_reload(((data as u16 & 0x07) << 8) | self.pulse_1.get_reload() & 0x00FF);
-                self.pulse_1.set_timer(self.pulse_1.get_reload());
+                self.pulse_1_seq.set_reload(((data as u16 & 0x07) << 8) | self.pulse_1_seq.get_reload() & 0x00FF);
+                self.pulse_1_seq.set_timer(self.pulse_1_seq.get_reload());
+                self.pulse_1_lc.set_counter(sound_length_counter::LENGTH_TABLE[((data & 0xF8) >> 3) as usize]);
+                self.pulse_1_env.set_start(true);
                 true
             },
             0x4004 =>
@@ -98,26 +131,30 @@ impl ReadWrite for Apu2a03
                 {
                     0x00 =>
                     {
-                        self.pulse_2.set_sequence(0b00000001);
-                        self.pulse_2.set_duty_cycle(0.125);
+                        self.pulse_2_seq.set_sequence(0b00000001);
+                        self.pulse_2_osc.set_duty_cycle(0.125);
                     },
                     0x01 =>
                     {
-                        self.pulse_2.set_sequence(0b00000011);
-                        self.pulse_2.set_duty_cycle(0.250);
+                        self.pulse_2_seq.set_sequence(0b00000011);
+                        self.pulse_2_osc.set_duty_cycle(0.250);
                     },
                     0x02 =>
                     {
-                        self.pulse_2.set_sequence(0b00001111);
-                        self.pulse_2.set_duty_cycle(0.500);
+                        self.pulse_2_seq.set_sequence(0b00001111);
+                        self.pulse_2_osc.set_duty_cycle(0.500);
                     },
                     0x03 =>
                     {
-                        self.pulse_2.set_sequence(0b11111100);
-                        self.pulse_2.set_duty_cycle(0.750);
+                        self.pulse_2_seq.set_sequence(0b11111100);
+                        self.pulse_2_osc.set_duty_cycle(0.750);
                     },
                     _ => panic!("Impossible")
                 }
+
+                self.pulse_2_halt = data & 0x20 == 0x20;
+                self.pulse_2_env.set_volume(data as u16 & 0x0F);
+                self.pulse_2_env.set_disable(data as u16 & 0x10 == 0x10);
                 true
             },
             0x4005 =>
@@ -126,13 +163,15 @@ impl ReadWrite for Apu2a03
             },
             0x4006 =>
             {
-                self.pulse_2.set_reload(self.pulse_2.get_reload() & 0xFF00 | data as u16);
+                self.pulse_2_seq.set_reload(self.pulse_2_seq.get_reload() & 0xFF00 | data as u16);
                 true
             },
             0x4007 =>
             {
-                self.pulse_2.set_reload(((data as u16 & 0x07) << 8) | self.pulse_2.get_reload() & 0x00FF);
-                self.pulse_2.set_timer(self.pulse_2.get_reload());
+                self.pulse_2_seq.set_reload(((data as u16 & 0x07) << 8) | self.pulse_2_seq.get_reload() & 0x00FF);
+                self.pulse_2_seq.set_timer(self.pulse_2_seq.get_reload());
+                self.pulse_2_lc.set_counter(sound_length_counter::LENGTH_TABLE[((data & 0xF8) >> 3) as usize]);
+                self.pulse_2_env.set_start(true);
                 true
             },
             0x4008 =>
@@ -165,6 +204,8 @@ impl ReadWrite for Apu2a03
             },
             0x400F =>
             {
+                self.pulse_1_env.set_start(true);
+                self.pulse_2_env.set_start(true);
                 true
             },
             0x4010 =>
@@ -185,8 +226,8 @@ impl ReadWrite for Apu2a03
             },
             0x4015 =>
             {
-                self.pulse_1.set_enable(data & 0x01 == 0x01);
-                self.pulse_2.set_enable(data & 0x02 == 0x02);
+                self.pulse_1_seq.set_enable(data & 0x01 == 0x01);
+                self.pulse_2_seq.set_enable(data & 0x02 == 0x02);
                 true
             },
             0x4017 =>
@@ -200,9 +241,10 @@ impl ReadWrite for Apu2a03
         }
     }
 
-    fn cpu_read(&mut self, _: u16, _: &mut u8) -> bool
+    fn cpu_read(&mut self, _: u16, data: &mut u8) -> bool
     {
-        false
+        *data = 0x00;
+        true
     }
 
     fn ppu_write(&mut self, address: u16, _: u8) -> bool
@@ -254,17 +296,66 @@ impl Clockable for Apu2a03
             // Quarter frame beats adjust volume envelope
             if quarter_frame_clock
             {
-                // TODO
+                self.pulse_1_env.set_looped(self.pulse_1_halt);
+                self.pulse_1_env.clock_tick();
+
+                self.pulse_2_env.set_looped(self.pulse_2_halt);
+                self.pulse_2_env.clock_tick();
             }
 
             // Half frame beats adjust the note length and frequency sweepers
             if half_frame_clock
             {
-                // TODO
+                self.pulse_1_lc.set_enable(self.pulse_1_seq.get_enable());
+                self.pulse_1_lc.set_halt(self.pulse_1_halt);
+                self.pulse_1_lc.clock_tick();
+
+                self.pulse_2_lc.set_enable(self.pulse_1_seq.get_enable());
+                self.pulse_2_lc.set_halt(self.pulse_1_halt);
+                self.pulse_2_lc.clock_tick();
             }
 
-            self.pulse_1.set_frequency(1789773.0 / (16.0 * (self.pulse_1.get_reload() as f64 + 1.0)));
-            self.pulse_2.set_frequency(1789773.0 / (16.0 * (self.pulse_2.get_reload() as f64 + 1.0)));
+            // Pulse 1
+            {
+                self.pulse_1_osc.set_frequency(1789773.0 / (16.0 * (self.pulse_1_seq.get_reload() as f64 + 1.0)));
+                self.pulse_1_osc.set_amplitude((self.pulse_1_env.get_output() as f64 - 1.0) / 16.0);
+                let new_pulse_1_sample = self.pulse_1_osc.get_output();
+
+                if self.pulse_1_lc.get_counter() > 0 && self.pulse_1_seq.get_timer() >= 8 && self.pulse_1_env.get_output() > 2
+                {
+                    self.pulse_1_sample += (new_pulse_1_sample - self.pulse_1_sample) * 0.5;
+                }
+                else
+                {
+                    self.pulse_1_sample = 0.0;
+                }
+
+                if !self.pulse_1_seq.get_enable()
+                {
+                    self.pulse_1_sample = 0.0;
+                }
+            }
+
+            // Pulse 2
+            {
+                self.pulse_2_osc.set_frequency(1789773.0 / (16.0 * (self.pulse_2_seq.get_reload() as f64 + 1.0)));
+                self.pulse_2_osc.set_amplitude((self.pulse_2_env.get_output() as f64 - 1.0) / 16.0);
+                let new_pulse_2_sample = self.pulse_2_osc.get_output();
+
+                if self.pulse_2_lc.get_counter() > 0 && self.pulse_2_seq.get_timer() >= 8 && self.pulse_2_env.get_output() > 2
+                {
+                    self.pulse_2_sample += (new_pulse_2_sample - self.pulse_2_sample) * 0.5;
+                }
+                else
+                {
+                    self.pulse_2_sample = 0.0;
+                }
+
+                if !self.pulse_2_seq.get_enable()
+                {
+                    self.pulse_2_sample = 0.0;
+                }
+            }
         }
 
         self.clock_counter += 1;

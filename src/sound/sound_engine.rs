@@ -1,19 +1,16 @@
 use std::sync::{Arc, Mutex};
-use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use cpal::traits::{DeviceTrait, HostTrait};
 
 use crate::{traits::Clockable, MainState};
-
-use super::oscillator::Oscillator;
 
 pub struct SoundEngine
 {
     sample_rate: u32,
-    channels: usize, 
-    oscillators: Vec<Oscillator>,
+    channels: usize,
     audio_time_per_system_sample: f64,
     audio_time_per_nes_clock: f64,
     audio_time: f64,
-    osc_sample: [(f64, f64); 4],
+    final_mix: f64,
     emulator_tick_callback: fn() -> bool
 }
 
@@ -24,11 +21,10 @@ impl SoundEngine
         SoundEngine {
             sample_rate: 0,
             channels: 0,
-            oscillators: Vec::new(),
             audio_time_per_system_sample: 0.0,
             audio_time_per_nes_clock: 0.0,
             audio_time: 0.0,
-            osc_sample: [(0.0, 0.0); 4],
+            final_mix: 0.0,
             emulator_tick_callback
         }
     }
@@ -56,26 +52,10 @@ impl SoundEngine
                     }
                 }
 
-                let mut inner = engine.lock().unwrap();
-                let mut dsp_samples: [f64; 4] = [0.0; 4];
-
-                (0..inner.oscillators.len()).for_each(|i: usize|
-                {
-                    let osc_sample = inner.osc_sample[i];
-                    let osc: &mut Oscillator = &mut inner.oscillators[i];
-
-                    osc.set_duty_cycle(osc_sample.0);
-                    osc.set_freq(osc_sample.1);
-                    dsp_samples[i] = osc.get_mono();
-                });
-
-                let final_mix = ((1.0 * dsp_samples[0]) - 0.8) * 0.1 +
-                                ((1.0 * dsp_samples[1]) - 0.8) * 0.1;
-                                //((2.0 * (noise_output - 0.5))) * 0.1;
-
+                let inner = engine.lock().unwrap();
                 for sample_slot in frame.iter_mut()
                 {
-                    *sample_slot = final_mix as f32;
+                    *sample_slot = inner.final_mix as f32;
                 }
             }
         }
@@ -94,21 +74,11 @@ impl SoundEngine
             inner.audio_time_per_nes_clock = 1.0 / 5369318.0; // PPU Clock Frequency, based on NTSC NES core frequency
             inner.sample_rate = supported_config.sample_rate().0;
             inner.channels = supported_config.channels() as usize;
-
-
-            // Create NES oscillators
-            let mut pulse_1 = Oscillator::new(); 
-            pulse_1.set_sample_rate(inner.sample_rate as f64);
-            inner.oscillators.push(pulse_1);
-
-            let mut pulse_2 = Oscillator::new(); 
-            pulse_2.set_sample_rate(inner.sample_rate as f64);
-            inner.oscillators.push(pulse_2);
         }
         drop(inner);
 
         let config: cpal::StreamConfig = supported_config.into();
-        let stream = device.build_output_stream(
+        device.build_output_stream(
             &config,
             move |data: &mut [f32], _: &cpal::OutputCallbackInfo|
             {
@@ -117,10 +87,12 @@ impl SoundEngine
             },
             move |err| {
                 eprintln!("An error occurred on stream: {}", err);
-            }, None).unwrap();
+            }, None).unwrap()
+    }
 
-        stream.play().unwrap();
-        stream
+    pub fn get_sample_rate(&self) -> u32
+    {
+        self.sample_rate
     }
 }
 
@@ -132,7 +104,7 @@ impl Clockable for SoundEngine
         if self.audio_time >= self.audio_time_per_system_sample
         {
             self.audio_time -= self.audio_time_per_system_sample;
-            self.osc_sample = MainState::get_instance().apu.as_ref().unwrap().lock().unwrap().get_osc_data();
+            self.final_mix = MainState::get_instance().apu.as_ref().unwrap().lock().unwrap().get_final_mix();
             return true;
         }
 
