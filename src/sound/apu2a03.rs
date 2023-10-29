@@ -1,6 +1,6 @@
 use crate::traits::{ReadWrite, Clockable, Resettable};
 
-use super::{sequencer::Sequencer, envelope::Envelope, oscillator::Oscillator, sound_length_counter::{SoundLengthCounter, self}};
+use super::{sequencer::Sequencer, envelope::Envelope, oscillator::Oscillator, sound_length_counter::{SoundLengthCounter, self}, sweeper::Sweeper};
 
 pub struct Apu2a03
 {
@@ -10,6 +10,9 @@ pub struct Apu2a03
     pulse_1_osc: Oscillator,
     pulse_1_env: Envelope,
     pulse_1_lc: SoundLengthCounter,
+    pulse_1_sweep: Sweeper,
+    pulse_1_freq: f64,
+    pulse_1_sp: f64,
 
     pulse_2_sample: f64,
     pulse_2_halt: bool,
@@ -17,6 +20,9 @@ pub struct Apu2a03
     pulse_2_osc: Oscillator,
     pulse_2_env: Envelope,
     pulse_2_lc: SoundLengthCounter,
+    pulse_2_sweep: Sweeper,
+    pulse_2_freq: f64,
+    pulse_2_sp: f64,
 
     frame_clock_counter: u32,
     clock_counter: u32
@@ -34,6 +40,9 @@ impl Apu2a03
             pulse_1_osc: Oscillator::new(),
             pulse_1_env: Envelope::new(),
             pulse_1_lc: SoundLengthCounter::new(),
+            pulse_1_sweep: Sweeper::new(),
+            pulse_1_freq: 0.0,
+            pulse_1_sp: 0.0,
 
             pulse_2_sample: 0.0,
             pulse_2_halt: false,
@@ -41,6 +50,9 @@ impl Apu2a03
             pulse_2_osc: Oscillator::new(),
             pulse_2_env: Envelope::new(),
             pulse_2_lc: SoundLengthCounter::new(),
+            pulse_2_sweep: Sweeper::new(),
+            pulse_2_freq: 0.0,
+            pulse_2_sp: 0.0,
 
             frame_clock_counter: 0,
             clock_counter: 0
@@ -54,12 +66,20 @@ impl Apu2a03
 			// ((2.0 * (noise_output - 0.5))) * 0.1; 
     }
 
-    pub fn set_sample_rate(&mut self, sample_rate: u32)
+    pub fn get_debug_info(&self) -> (f64, f64, f64, f64)
     {
-        // Since we will be sampling our oscillators on this thread
-        // we need to adjust the sample rate appropriately.
-        self.pulse_1_osc.set_sample_rate(sample_rate * 6);
-        self.pulse_2_osc.set_sample_rate(sample_rate * 6);
+        (self.pulse_1_freq, self.pulse_1_sp, self.pulse_2_freq, self.pulse_2_sp)
+    }
+
+    pub fn set_oscillator_sample_rate(&mut self, osc_sample_rate: f64)
+    {
+        self.pulse_1_osc.set_oscillator_sample_rate(osc_sample_rate);
+        self.pulse_2_osc.set_oscillator_sample_rate(osc_sample_rate);
+    }
+
+    fn rotate_sequence(s: &mut u32)
+    {
+        *s = ((*s & 0x0001) << 7) | ((*s & 0x00FE) >> 1);
     }
 }
 
@@ -110,6 +130,11 @@ impl ReadWrite for Apu2a03
             },
             0x4001 =>
             {
+                self.pulse_1_sweep.set_enabled(data & 0x80 == 0x80);
+                self.pulse_1_sweep.set_period((data & 0x70) >> 4);
+                self.pulse_1_sweep.set_down(data & 0x08 == 0x08);
+                self.pulse_1_sweep.set_shift(data & 0x07);
+                self.pulse_1_sweep.set_reload(true);
                 true
             },
             0x4002 =>
@@ -159,6 +184,11 @@ impl ReadWrite for Apu2a03
             },
             0x4005 =>
             {
+                self.pulse_2_sweep.set_enabled(data & 0x80 == 0x80);
+                self.pulse_2_sweep.set_period((data & 0x70) >> 4);
+                self.pulse_2_sweep.set_down(data & 0x08 == 0x08);
+                self.pulse_2_sweep.set_shift(data & 0x07);
+                self.pulse_2_sweep.set_reload(true);
                 true
             },
             0x4006 =>
@@ -313,15 +343,30 @@ impl Clockable for Apu2a03
                 self.pulse_2_lc.set_enable(self.pulse_1_seq.get_enable());
                 self.pulse_2_lc.set_halt(self.pulse_1_halt);
                 self.pulse_2_lc.clock_tick();
+
+                self.pulse_1_sweep.set_target(self.pulse_1_seq.get_reload());
+                self.pulse_1_sweep.set_channel(false);
+                self.pulse_1_sweep.clock_tick();
+                self.pulse_1_seq.set_reload(self.pulse_1_sweep.get_target());
+
+                self.pulse_2_sweep.set_target(self.pulse_2_seq.get_reload());
+                self.pulse_2_sweep.set_channel(true);
+                self.pulse_2_sweep.clock_tick();
+                self.pulse_2_seq.set_reload(self.pulse_2_sweep.get_target());
             }
 
             // Pulse 1
             {
-                self.pulse_1_osc.set_frequency(1789773.0 / (16.0 * (self.pulse_1_seq.get_reload() as f64 + 1.0)));
+                self.pulse_1_seq.set_callback(Apu2a03::rotate_sequence);
+                self.pulse_1_seq.clock_tick();
+                
+                self.pulse_1_sp = self.pulse_1_seq.get_reload() as f64 + 1.0;
+                self.pulse_1_freq = 1789773.0 / (16.0 * self.pulse_1_sp);
+                self.pulse_1_osc.set_base_frequency(self.pulse_1_freq);
                 self.pulse_1_osc.set_amplitude((self.pulse_1_env.get_output() as f64 - 1.0) / 16.0);
                 let new_pulse_1_sample = self.pulse_1_osc.get_output();
 
-                if self.pulse_1_lc.get_counter() > 0 && self.pulse_1_seq.get_timer() >= 8 && self.pulse_1_env.get_output() > 2
+                if self.pulse_1_lc.get_counter() > 0 && self.pulse_1_seq.get_timer() >= 8 && !self.pulse_1_sweep.get_mute() && self.pulse_1_env.get_output() > 2
                 {
                     self.pulse_1_sample += (new_pulse_1_sample - self.pulse_1_sample) * 0.5;
                 }
@@ -338,11 +383,16 @@ impl Clockable for Apu2a03
 
             // Pulse 2
             {
-                self.pulse_2_osc.set_frequency(1789773.0 / (16.0 * (self.pulse_2_seq.get_reload() as f64 + 1.0)));
+                self.pulse_2_seq.set_callback(Apu2a03::rotate_sequence);
+                self.pulse_2_seq.clock_tick();
+
+                self.pulse_2_sp = self.pulse_2_seq.get_reload() as f64 + 1.0;
+                self.pulse_2_freq = 1789773.0 / (16.0 * self.pulse_2_sp);
+                self.pulse_2_osc.set_base_frequency(self.pulse_2_freq);
                 self.pulse_2_osc.set_amplitude((self.pulse_2_env.get_output() as f64 - 1.0) / 16.0);
                 let new_pulse_2_sample = self.pulse_2_osc.get_output();
 
-                if self.pulse_2_lc.get_counter() > 0 && self.pulse_2_seq.get_timer() >= 8 && self.pulse_2_env.get_output() > 2
+                if self.pulse_2_lc.get_counter() > 0 && self.pulse_2_seq.get_timer() >= 8 && !self.pulse_2_sweep.get_mute() && self.pulse_2_env.get_output() > 2
                 {
                     self.pulse_2_sample += (new_pulse_2_sample - self.pulse_2_sample) * 0.5;
                 }
@@ -357,6 +407,15 @@ impl Clockable for Apu2a03
                 }
             }
         }
+
+        // Frequency sweepers change at high frequency
+        self.pulse_1_sweep.set_target(self.pulse_1_seq.get_reload());
+        self.pulse_1_sweep.track();
+        self.pulse_1_seq.set_reload(self.pulse_1_sweep.get_target());
+
+        self.pulse_2_sweep.set_target(self.pulse_2_seq.get_reload());
+        self.pulse_2_sweep.track();
+        self.pulse_2_seq.set_reload(self.pulse_2_sweep.get_target());
 
         self.clock_counter += 1;
 

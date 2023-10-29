@@ -260,6 +260,16 @@ impl MainState
         }
     }
 
+    fn draw_notes(&mut self, x: f32, y: f32, canvas: &mut ggez::graphics::Canvas)
+    {
+        let apu = self.apu.as_ref().unwrap().lock().unwrap();
+        let apu_debug = apu.get_debug_info();
+
+        let s: String = format!("{}, {}, {}, {}", apu_debug.0, apu_debug.1, apu_debug.2, apu_debug.3);
+        
+        canvas.draw(&Text::new(s), Vec2::new(x, y));
+    }
+
     fn process_controller_input(&mut self, ctx: &mut Context)
     {
         let mut bus = self.bus.lock().unwrap();
@@ -552,6 +562,7 @@ impl event::EventHandler<ggez::GameError> for EventHandlingState
 
         // Zero page
         MainState::draw_cpu_ram(MainState::get_instance(), 10, 750, 0x0000, 16, 16, &mut canvas);
+        MainState::draw_notes(MainState::get_instance(), 775.0, 750.0, &mut canvas);
         MainState::draw_cpu(MainState::get_instance(), 775.0, 2.0, &mut canvas);
         MainState::draw_code(MainState::get_instance(), 775.0, 100.0, 26, &mut canvas);
         MainState::draw_oam(MainState::get_instance(), 1175.0, 100.0, 26, &mut canvas);
@@ -572,8 +583,8 @@ fn main() -> GameResult
     let stream = SoundEngine::initialize(main_state.sound_engine.as_mut().unwrap().clone());
 
     // Tell the APU what the sample rate is
-    main_state.apu.as_mut().unwrap().lock().unwrap().set_sample_rate(
-        main_state.sound_engine.as_ref().unwrap().lock().unwrap().get_sample_rate());
+    main_state.apu.as_mut().unwrap().lock().unwrap().set_oscillator_sample_rate(
+        main_state.sound_engine.as_ref().unwrap().lock().unwrap().get_oscillator_sample_rate());
 
     stream.play().unwrap();
     main_state.sound_thread = Some(stream);

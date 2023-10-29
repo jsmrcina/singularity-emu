@@ -1,13 +1,26 @@
-use fundsp::{hacker::*, prelude::PulseWave};
+use fundsp::hacker::*;
 
-type OscillatorType = An<Pipe<f64, Stack<f64, Var<f64>, Var<f64>>, PulseWave<f64>>>;
+// type OscillatorType = fundsp::combinator::An<fundsp::audionode::Binop<f64, fundsp::audionode::FrameAdd<typenum::uint::UInt<typenum::uint::UTerm, typenum::bit::B1>, f64>,
+//     fundsp::audionode::Binop<f64, fundsp::audionode::FrameAdd<typenum::uint::UInt<typenum::uint::UTerm, typenum::bit::B1>, f64>,
+//     fundsp::audionode::Binop<f64, fundsp::audionode::FrameAdd<typenum::uint::UInt<typenum::uint::UTerm, typenum::bit::B1>, f64>,
+//     fundsp::audionode::Binop<f64, fundsp::audionode::FrameAdd<typenum::uint::UInt<typenum::uint::UTerm, typenum::bit::B1>, f64>,
+//     fundsp::audionode::Pipe<f64, fundsp::audionode::Stack<f64, fundsp::hacker::Var<f64>, fundsp::hacker::Var<f64>>, fundsp::prelude::PulseWave<f64>>,
+//     fundsp::audionode::Pipe<f64, fundsp::audionode::Stack<f64, fundsp::hacker::Var<f64>, fundsp::hacker::Var<f64>>, fundsp::prelude::PulseWave<f64>>>,
+//     fundsp::audionode::Pipe<f64, fundsp::audionode::Stack<f64, fundsp::hacker::Var<f64>, fundsp::hacker::Var<f64>>, fundsp::prelude::PulseWave<f64>>>,
+//     fundsp::audionode::Pipe<f64, fundsp::audionode::Stack<f64, fundsp::hacker::Var<f64>, fundsp::hacker::Var<f64>>, fundsp::prelude::PulseWave<f64>>>,
+//     fundsp::audionode::Pipe<f64, fundsp::audionode::Stack<f64, fundsp::hacker::Var<f64>, fundsp::hacker::Var<f64>>, fundsp::prelude::PulseWave<f64>>>>;
+
+type OscillatorType = An<Pipe<f64, Stack<f64, Var<f64>, Var<f64>>, prelude::PulseWave<f64>>>;
+
+type OptionalOscillatorType = Option<OscillatorType>;
 
 pub struct Oscillator
 {
-    frequency: Shared<f64>,
+    frequencies: Vec<Shared<f64>>,
     duty_cycle: Shared<f64>,
     amplitude: Shared<f64>,
-    dsp_oscillator: Option<OscillatorType>,
+    dsp_oscillator: OptionalOscillatorType,
+    harmonics: u32
 }
 
 impl Oscillator
@@ -16,19 +29,26 @@ impl Oscillator
     {
         let mut s = Oscillator
         {
-            frequency: shared(0.0),
+            frequencies: Vec::new(),
             duty_cycle: shared(0.0),
             amplitude: shared(0.0),
-            dsp_oscillator: None
+            dsp_oscillator: None,
+            harmonics: 5
         };
 
-        s.dsp_oscillator = Some((var(&s.frequency) | var(&s.duty_cycle)) >> pulse());
-        s
-    }
+        for _ in 0..s.harmonics
+        {
+            s.frequencies.push(shared(0.0));
+        }
 
-    pub fn get_frequency(&mut self) -> f64
-    {
-        self.frequency.value()
+        s.dsp_oscillator = Some(
+                (var(&s.frequencies[0]) | var(&s.duty_cycle)) >> pulse()// +
+                // ((var(&s.frequencies[1]) | var(&s.duty_cycle)) >> pulse()) +
+                // ((var(&s.frequencies[2]) | var(&s.duty_cycle)) >> pulse()) +
+                // ((var(&s.frequencies[3]) | var(&s.duty_cycle)) >> pulse()) +
+                // ((var(&s.frequencies[4]) | var(&s.duty_cycle)) >> pulse())
+            );
+        s
     }
 
     pub fn get_duty_cycle(&mut self) -> f64
@@ -36,9 +56,14 @@ impl Oscillator
         self.duty_cycle.value()
     }
 
-    pub fn set_frequency(&mut self, value: f64)
+    pub fn set_base_frequency(&mut self, value: f64)
     {
-        self.frequency.set_value(value);
+        self.frequencies[0].set_value(value);
+
+        for i in 1..self.harmonics
+        {
+            self.frequencies[i as usize].set_value(value * i as f64);
+        }
     }
 
     pub fn set_duty_cycle(&mut self, value: f64)
@@ -46,9 +71,9 @@ impl Oscillator
         self.duty_cycle.set_value(value);
     }
 
-    pub fn set_sample_rate(&mut self, sample_rate: u32)
+    pub fn set_oscillator_sample_rate(&mut self, osc_sample_rate: f64)
     {
-        self.dsp_oscillator.as_mut().unwrap().set_sample_rate(sample_rate as f64);
+        self.dsp_oscillator.as_mut().unwrap().set_sample_rate(osc_sample_rate);
     }
 
     pub fn get_output(&mut self) -> f64

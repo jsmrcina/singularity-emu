@@ -90,9 +90,35 @@ impl SoundEngine
             }, None).unwrap()
     }
 
-    pub fn get_sample_rate(&self) -> u32
+    pub fn get_oscillator_sample_rate(&self) -> f64
     {
-        self.sample_rate
+        // This is a bit complex, so adding a comment here.
+        // The oscillator expects to be sampled at the same rate as the sound
+        // thread runs and requests samples.
+
+        // The oscillator sample rate affects the frequency of the notes since
+        // it also determines the time domain of the wave (since sound sample rate is
+        // samples per second)
+        
+        // Because we are sampling the oscillator in the APU on the game thread,
+        // we need to adjust the oscillator sample rate so that it
+        // doesn't produce the wrong frequencies when the samples are used in the
+        // sound thread.
+
+        // For each call of sound_engine::sound_out on the sound thread, we call clock_tick
+        // until a single audio sample is ready. One sample being ready depends on the audio
+        // sample rate and has the formula:
+        // clock_tick calls = audio_time_per_system_sample / audio_time_per_nes_clock
+        // clock_tick calls = (1 / audio sample rate) / (1 / PPU clock frequency)
+
+        // For an example audio sample rate of 48000:
+        // clock_tick calls = (1 / 48000) / (1 / 5369318.0) which is ~112
+        
+        // For each six clock ticks we do one APU clock tick.
+        // For each APU clock tick, we request a single sample from the oscillator
+        // Thus, the oscillator sample rate is: sound sample rate * ((clock_tick calls) / 6)
+    
+        self.sample_rate as f64 * self.audio_time_per_system_sample / self.audio_time_per_nes_clock / 6.0
     }
 }
 
