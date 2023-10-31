@@ -265,8 +265,14 @@ impl MainState
         let apu = self.apu.as_ref().unwrap().lock().unwrap();
         let apu_debug = apu.get_debug_info();
 
-        let s: String = format!("{}, {}, {}, {}", apu_debug.0, apu_debug.1, apu_debug.2, apu_debug.3);
+        let s: String = format!("{}, {}, {}, {}, {}", apu_debug.0, apu_debug.1, apu_debug.2, apu_debug.3, apu_debug.4);
         
+        canvas.draw(&Text::new(s), Vec2::new(x, y));
+    }
+
+    fn draw_perf(&mut self, x: f32, y: f32, ctx: &Context, canvas: &mut ggez::graphics::Canvas)
+    {
+        let s: String = format!("FPS: {}", ctx.time.fps());
         canvas.draw(&Text::new(s), Vec2::new(x, y));
     }
 
@@ -566,6 +572,7 @@ impl event::EventHandler<ggez::GameError> for EventHandlingState
         MainState::draw_cpu(MainState::get_instance(), 775.0, 2.0, &mut canvas);
         MainState::draw_code(MainState::get_instance(), 775.0, 100.0, 26, &mut canvas);
         MainState::draw_oam(MainState::get_instance(), 1175.0, 100.0, 26, &mut canvas);
+        MainState::draw_perf(MainState::get_instance(), 775.0, 800.0, &ctx, &mut canvas);
         MainState::get_instance().ppu.as_ref().unwrap().lock().unwrap().render(ctx, &mut canvas, 3.0);
         canvas.finish(ctx)?;
         Ok(())

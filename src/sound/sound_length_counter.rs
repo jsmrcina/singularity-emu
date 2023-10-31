@@ -46,6 +46,14 @@ impl SoundLengthCounter
     }
 }
 
+impl Default for SoundLengthCounter
+{
+    fn default() -> Self
+    {
+        Self::new()
+    }
+}
+
 impl Clockable for SoundLengthCounter
 {
     fn clock_tick(&mut self) -> bool

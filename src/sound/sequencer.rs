@@ -7,7 +7,8 @@ pub struct Sequencer
     reload: u16,
     output: u8,
     enable: bool,
-    callback: Option<fn(s: &mut u32)>,
+    mode: bool,
+    callback: Option<fn(s: &mut u32, mode: bool)>,
 }
 
 impl Sequencer
@@ -21,11 +22,12 @@ impl Sequencer
             reload: 0,
             output: 0,
             enable: false,
+            mode: false,
             callback: None,
         }
     }
 
-    pub fn set_callback(&mut self, callback: fn(s: &mut u32))
+    pub fn set_callback(&mut self, callback: fn(s: &mut u32, mode: bool))
     {
         self.callback = Some(callback);
     }
@@ -69,6 +71,16 @@ impl Sequencer
     {
         self.enable = enable;
     }
+
+    pub fn get_mode(&self) -> bool
+    {
+        self.mode
+    }
+
+    pub fn set_mode(&mut self, mode: bool)
+    {
+        self.mode = mode;
+    }
 }
 
 impl Default for Sequencer {
@@ -87,7 +99,7 @@ impl Clockable for Sequencer
             if self.timer == 0xFFFF
             {
                 self.timer = self.reload + 1;
-                (self.callback.unwrap())(&mut self.sequence);
+                (self.callback.unwrap())(&mut self.sequence, self.mode);
                 self.output = (self.sequence & 0x00000001) as u8;
             }
         }

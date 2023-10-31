@@ -24,6 +24,12 @@ pub struct Apu2a03
     pulse_2_freq: f64,
     pulse_2_sp: f64,
 
+    noise_sample: f64,
+    noise_halt: bool,
+    noise_seq: Sequencer,
+    noise_env: Envelope,
+    noise_lc: SoundLengthCounter,
+
     frame_clock_counter: u32,
     clock_counter: u32
 }
@@ -32,7 +38,7 @@ impl Apu2a03
 {
     pub fn new() -> Self
     {
-        Apu2a03
+        let mut s = Apu2a03
         {
             pulse_1_sample: 0.0,
             pulse_1_halt: false,
@@ -54,21 +60,31 @@ impl Apu2a03
             pulse_2_freq: 0.0,
             pulse_2_sp: 0.0,
 
+            noise_sample: 0.0,
+            noise_halt: false,
+            noise_seq: Sequencer::new(),
+            noise_env: Envelope::new(),
+            noise_lc: SoundLengthCounter::new(),
+
             frame_clock_counter: 0,
             clock_counter: 0
-        }
+        };
+
+        // Initialize noise sequence
+        s.noise_seq.set_sequence(0x1);
+        s
     }
 
     pub fn get_final_mix(&mut self) -> f64
     {
         (self.pulse_1_sample - 0.8) * 0.3 +
-			(self.pulse_2_sample - 0.8) * 0.3 // +
-			// ((2.0 * (noise_output - 0.5))) * 0.1; 
+			(self.pulse_2_sample - 0.8) * 0.3 +
+			2.0 * (self.noise_sample - 0.5) * 0.3
     }
 
-    pub fn get_debug_info(&self) -> (f64, f64, f64, f64)
+    pub fn get_debug_info(&self) -> (f64, f64, f64, f64, f64)
     {
-        (self.pulse_1_freq, self.pulse_1_sp, self.pulse_2_freq, self.pulse_2_sp)
+        (self.pulse_1_freq, self.pulse_1_sp, self.pulse_2_freq, self.pulse_2_sp, self.noise_sample)
     }
 
     pub fn set_oscillator_sample_rate(&mut self, osc_sample_rate: f64)
@@ -77,9 +93,22 @@ impl Apu2a03
         self.pulse_2_osc.set_oscillator_sample_rate(osc_sample_rate);
     }
 
-    fn rotate_sequence(s: &mut u32)
+    fn rotate_sequence(s: &mut u32, _: bool)
     {
         *s = ((*s & 0x0001) << 7) | ((*s & 0x00FE) >> 1);
+    }
+
+    fn noise_seq_update(s: &mut u32, mode: bool)
+    {
+        if !mode
+        {
+            *s = (((*s & 0x0001) ^ ((*s & 0x0002) >> 1)) << 14) | ((*s & 0x7FFF) >> 1);
+        }
+        else
+        {
+            *s = (((*s & 0x0001) ^ ((*s & 0x0007) >> 1)) << 14) | ((*s & 0x7FFF) >> 1);
+        }
+
     }
 }
 
@@ -222,6 +251,9 @@ impl ReadWrite for Apu2a03
             },
             0x400C =>
             {
+                self.noise_env.set_volume((data & 0x0F) as u16);
+                self.noise_env.set_disable(data & 0x10 == 0x10);
+                self.noise_halt = data & 0x20 == 0x20;
                 true
             },
             0x400D =>
@@ -230,12 +262,36 @@ impl ReadWrite for Apu2a03
             },
             0x400E =>
             {
+                self.noise_seq.set_mode(data & 0xF0 == 0xF0);
+
+                match data & 0x0F
+                {
+                    0x00 => self.noise_seq.set_reload(0),
+                    0x01 => self.noise_seq.set_reload(4),
+                    0x02 => self.noise_seq.set_reload(8),
+                    0x03 => self.noise_seq.set_reload(16),
+                    0x04 => self.noise_seq.set_reload(32),
+                    0x05 => self.noise_seq.set_reload(64),
+                    0x06 => self.noise_seq.set_reload(96),
+                    0x07 => self.noise_seq.set_reload(128),
+                    0x08 => self.noise_seq.set_reload(160),
+                    0x09 => self.noise_seq.set_reload(202),
+                    0x0A => self.noise_seq.set_reload(254),
+                    0x0B => self.noise_seq.set_reload(380),
+                    0x0C => self.noise_seq.set_reload(508),
+                    0x0D => self.noise_seq.set_reload(1016),
+                    0x0E => self.noise_seq.set_reload(2034),
+                    0x0F => self.noise_seq.set_reload(4068),
+                    _ => panic!("Invalid reload value for noise channel")
+                }
                 true
             },
             0x400F =>
             {
                 self.pulse_1_env.set_start(true);
                 self.pulse_2_env.set_start(true);
+                self.noise_env.set_start(true);
+                self.noise_lc.set_counter(sound_length_counter::LENGTH_TABLE[((data & 0xF8) >> 3) as usize]);
                 true
             },
             0x4010 =>
@@ -258,6 +314,7 @@ impl ReadWrite for Apu2a03
             {
                 self.pulse_1_seq.set_enable(data & 0x01 == 0x01);
                 self.pulse_2_seq.set_enable(data & 0x02 == 0x02);
+                self.noise_seq.set_enable(data & 0x04 == 0x04);
                 true
             },
             0x4017 =>
@@ -331,6 +388,9 @@ impl Clockable for Apu2a03
 
                 self.pulse_2_env.set_looped(self.pulse_2_halt);
                 self.pulse_2_env.clock_tick();
+
+                self.noise_env.set_looped(self.noise_halt);
+                self.noise_env.clock_tick();
             }
 
             // Half frame beats adjust the note length and frequency sweepers
@@ -343,6 +403,10 @@ impl Clockable for Apu2a03
                 self.pulse_2_lc.set_enable(self.pulse_1_seq.get_enable());
                 self.pulse_2_lc.set_halt(self.pulse_1_halt);
                 self.pulse_2_lc.clock_tick();
+
+                self.noise_lc.set_enable(self.noise_seq.get_enable());
+                self.noise_lc.set_halt(self.noise_halt);
+                self.noise_lc.clock_tick();
 
                 self.pulse_1_sweep.set_target(self.pulse_1_seq.get_reload());
                 self.pulse_1_sweep.set_channel(false);
@@ -404,6 +468,22 @@ impl Clockable for Apu2a03
                 if !self.pulse_2_seq.get_enable()
                 {
                     self.pulse_2_sample = 0.0;
+                }
+            }
+            
+            // Noise
+            {
+                self.noise_seq.set_callback(Apu2a03::noise_seq_update);
+                self.noise_seq.clock_tick();
+
+                if self.noise_lc.get_counter() > 0
+                {
+                    self.noise_sample = self.noise_seq.get_output() as f64 * (self.noise_env.get_output().saturating_sub(1)) as f64 / 16.0;
+                }
+
+                if !self.noise_seq.get_enable()
+                {
+                    self.noise_sample = 0.0;
                 }
             }
         }
