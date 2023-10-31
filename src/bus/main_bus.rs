@@ -189,8 +189,12 @@ impl ReadWrite for MainBus
     }
 }
 
-impl Default for MainBus {
-    fn default() -> Self {
+impl Default for MainBus
+{
+    fn default() -> Self
+    {
         MainBus::new()
     }
 }
+
+unsafe impl Send for MainBus {}

@@ -626,16 +626,14 @@ impl ReadWrite for Ppu2c02
     fn ppu_write(&mut self, address: u16, data: u8) -> bool
     {
         let mut mut_addr = address & 0x3FFF;
-        let handled;
-
-        match &self.cartridge
-        {
-            Some(x) =>
+        let handled = match &self.cartridge
             {
-                handled = x.lock().unwrap().ppu_write(mut_addr, data)
-            },
-            None => panic!("No cartridge inserted, PPU tried to read")
-        };
+                Some(x) =>
+                {
+                    x.lock().unwrap().ppu_write(mut_addr, data)
+                },
+                None => panic!("No cartridge inserted, PPU tried to read")
+            };
 
         if !handled
         {
@@ -727,13 +725,11 @@ impl ReadWrite for Ppu2c02
     fn ppu_read(&self, address: u16, data: &mut u8) -> bool
     {
         let mut mut_addr = address & 0x3FFF;
-        let handled;
-
-        match &self.cartridge
+        let handled =match &self.cartridge
         {
             Some(x) =>
             {
-                handled = x.lock().unwrap().ppu_read(mut_addr, data)
+                x.lock().unwrap().ppu_read(mut_addr, data)
             },
             None => panic!("No cartridge inserted, PPU tried to read")
         };
@@ -1057,7 +1053,7 @@ impl Clockable for Ppu2c02
                                 // Top half of the sprite
                                 sprite_pattern_addr_lo =
                                     (((self.sprite_scanline[index].id & 0x01) as u16) << 12) |              // Which pattern table (0 or 4kb)
-                                    ((self.sprite_scanline[index].id & 0xFE + 1) as u16) << 4 |                 // Which cell, Tile ID * 16 (16 bytes per tile)
+                                    (((self.sprite_scanline[index].id & 0xFE) + 1) as u16) << 4 |                 // Which cell, Tile ID * 16 (16 bytes per tile)
                                     (7 - (self.scan_line as u16 - self.sprite_scanline[index].y as u16)) & 0x07;  // Which row in the cell, 0 to 7
                             }
                             else
@@ -1427,8 +1423,12 @@ impl Ppu2c02Renderer
 
 }
 
-impl Default for Ppu2c02Renderer {
-    fn default() -> Self {
+impl Default for Ppu2c02Renderer
+{
+    fn default() -> Self
+    {
         Self::new()
     }
 }
+
+unsafe impl Send for Ppu2c02 {}

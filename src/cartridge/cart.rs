@@ -202,3 +202,5 @@ impl ReadWrite for Cart
         handled
     }
 }
+
+unsafe impl Send for Cart {}

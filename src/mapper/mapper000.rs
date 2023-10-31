@@ -23,15 +23,14 @@ impl MapperTrait for Mapper000
     {
         if address >= 0x8000
         {
-            let mask: u16;
-            if self.prg_banks == 1
-            {
-                mask = 0x3FFF;
-            }
-            else
-            {
-                mask = 0x7FFF;
-            }
+            let mask: u16 = if self.prg_banks == 1
+                {
+                    0x3FFF
+                }
+                else
+                {
+                    0x7FFF
+                };
 
             *mapped_addr = address as u32 & mask as u32;
             return true;
@@ -44,15 +43,14 @@ impl MapperTrait for Mapper000
     {
         if address >= 0x8000
         {
-            let mask: u16;
-            if self.prg_banks == 1
+            let mask: u16 = if self.prg_banks == 1
             {
-                mask = 0x3FFF;
+                0x3FFF
             }
             else
             {
-                mask = 0x7FFF;
-            }
+                0x7FFF
+            };
 
             *mapped_addr = address as u32 & mask as u32;
             return true;

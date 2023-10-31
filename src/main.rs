@@ -221,17 +221,10 @@ impl MainState
             num_offset += 1;
         }
 
-        let inst = self.map_asm.get(&cpu.get_pc());
-        match inst
-        {
-            
-            Some(s) => canvas.draw(&Text::new(s),
-                graphics::DrawParam::new().color(graphics::Color::CYAN).dest(Vec2::new(x, y + (MainState::OFFSET_Y * num_offset as f32)))),
-            None => ()
-        }
+        canvas.draw(&Text::new(self.map_asm.get(&cpu.get_pc()).unwrap()),
+            graphics::DrawParam::new().color(graphics::Color::CYAN).dest(Vec2::new(x, y + (MainState::OFFSET_Y * num_offset as f32))));
 
         num_offset += 1;
-
         for (_, value) in after_keys
         {
             canvas.draw(&Text::new(value), Vec2::new(x, y + (MainState::OFFSET_Y * num_offset as f32)));
@@ -572,7 +565,7 @@ impl event::EventHandler<ggez::GameError> for EventHandlingState
         MainState::draw_cpu(MainState::get_instance(), 775.0, 2.0, &mut canvas);
         MainState::draw_code(MainState::get_instance(), 775.0, 100.0, 26, &mut canvas);
         MainState::draw_oam(MainState::get_instance(), 1175.0, 100.0, 26, &mut canvas);
-        MainState::draw_perf(MainState::get_instance(), 775.0, 800.0, &ctx, &mut canvas);
+        MainState::draw_perf(MainState::get_instance(), 775.0, 800.0, ctx, &mut canvas);
         MainState::get_instance().ppu.as_ref().unwrap().lock().unwrap().render(ctx, &mut canvas, 3.0);
         canvas.finish(ctx)?;
         Ok(())

@@ -1492,21 +1492,21 @@ impl Cpu6502
                 let ptr = ((hi as u16) << 8) | lo as u16;
                 pad(&mut instruction, &name);
         
-                let offset_addr;
-                if lo == 0x00FF
-                {
-                    self.cpu_read(ptr, &mut lo);
-                    self.cpu_read(ptr & 0xFF00, &mut hi);
-        
-                    offset_addr = ((hi as u16) << 8) | lo as u16;
-                }
-                else
-                {
-                    self.cpu_read(ptr, &mut lo);
-                    self.cpu_read(ptr + 1, &mut hi);
-        
-                    offset_addr = ((hi as u16) << 8) | lo as u16;
-                }
+                let offset_addr =
+                    if lo == 0x00FF
+                    {
+                        self.cpu_read(ptr, &mut lo);
+                        self.cpu_read(ptr & 0xFF00, &mut hi);
+            
+                        ((hi as u16) << 8) | lo as u16
+                    }
+                    else
+                    {
+                        self.cpu_read(ptr, &mut lo);
+                        self.cpu_read(ptr + 1, &mut hi);
+            
+                        ((hi as u16) << 8) | lo as u16
+                    };
 
                 instruction += &format!(" (${:04X}) = {:04X}", ptr, offset_addr);
             }
@@ -1713,3 +1713,5 @@ impl Clockable for Cpu6502
          false
     }
 }
+
+unsafe impl Send for Cpu6502 {}
