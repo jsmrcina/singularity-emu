@@ -6,6 +6,7 @@ use std::io::{self, Read, Seek, SeekFrom};
 use byteorder::ReadBytesExt;
 
 use crate::mapper::mapper000::Mapper000;
+use crate::mapper::mapper002::Mapper002;
 
 struct InesHeader
 {
@@ -14,7 +15,7 @@ struct InesHeader
     chr_rom_chunks: u8,
     mapper_1: u8,
     mapper_2: u8,
-    _prg_ram_size: u8,
+    prg_ram_size: u8,
     _tv_system_1: u8,
     _tv_system_2: u8,
     _unused: [u8; 5]
@@ -40,7 +41,7 @@ impl InesHeader
         let chr_rom_chunks = reader.read_u8()?;
         let mapper_1 = reader.read_u8()?;
         let mapper_2 = reader.read_u8()?;
-        let _prg_ram_size = reader.read_u8()?;
+        let prg_ram_size = reader.read_u8()?;
         let _tv_system_1 = reader.read_u8()?;
         let _tv_system_2 = reader.read_u8()?;
 
@@ -53,7 +54,7 @@ impl InesHeader
             chr_rom_chunks,
             mapper_1,
             mapper_2,
-            _prg_ram_size,
+            prg_ram_size,
             _tv_system_1,
             _tv_system_2,
             _unused,
@@ -66,8 +67,8 @@ pub struct Cart
     prg_memory: Vec<u8>,
     chr_memory: Vec<u8>,
     mapper_id: u8,
-    prg_banks: u8,
-    chr_banks: u8,
+    prg_banks: u16,
+    chr_banks: u16,
     mirror_mode: MirrorMode,
     mapper: Option<Arc<Mutex<dyn MapperTrait>>>
 }
@@ -89,7 +90,7 @@ impl Cart
         {
             prg_memory: Vec::new(),
             chr_memory: Vec::new(),
-            mapper_id: ((header.mapper_1 >> 4) << 4) | (header.mapper_2 >> 4),
+            mapper_id: ((header.mapper_2 >> 4) << 4) | (header.mapper_1 >> 4),
             prg_banks: 0,
             chr_banks: 0,
             mapper: None,
@@ -101,24 +102,65 @@ impl Cart
             s.mirror_mode = MirrorMode::Vertical;
         }
 
-        let file_type: u8 = 1;
+        let mut file_type: u8 = 1;
+        if (header.mapper_2 & 0x0C) == 0x08
+        {
+            file_type = 2;
+        }
 
         if file_type == 1
         {
-            s.prg_banks = header.prg_rom_chunks;
+            s.prg_banks = header.prg_rom_chunks as u16;
             s.prg_memory.resize(s.prg_banks as usize * 16384, 0);
             file.read_exact(&mut s.prg_memory)?;
 
-            s.chr_banks = header.chr_rom_chunks;
-            s.chr_memory.resize(s.chr_banks as usize * 8192, 0);
+            s.chr_banks = header.chr_rom_chunks as u16;
+            if s.chr_banks == 0
+            {
+                // This is considered a RAM
+                s.chr_memory.resize(8192, 0);
+            }
+            else
+            {
+                // This is considered a ROM
+                s.chr_memory.resize(s.chr_banks as usize * 8192, 0);
+            }
             file.read_exact(&mut s.chr_memory)?;
         }
+        else if file_type == 2
+        {
+            if header.prg_ram_size & 0x0F == 0x0F
+            {
+                // Exponent multiplier notation
+                panic!("not supported")
+            }
+            else
+            {
+                s.prg_banks = ((header.prg_ram_size as u16 & 0x0F) << 8) | header.prg_rom_chunks as u16;
+                s.prg_memory.resize(s.prg_banks as usize * 16384, 0);
+                file.read_exact(&mut s.prg_memory)?;
+            }
 
-        // TODO: file type 0 and 2
+            if header.prg_ram_size & 0xF0 == 0xF0
+            {
+                // Exponent multiplier notation
+                panic!("not supported")
+            }
+            else
+            {
+                s.chr_banks = ((header.prg_ram_size as u16 & 0xF0) << 4) | header.chr_rom_chunks as u16;
+                s.chr_memory.resize(s.chr_banks as usize * 8192, 0);
+                file.read_exact(&mut s.chr_memory)?;
+            }
+            
+        }
+
+        // TODO: file type 0
 
         s.mapper = match s.mapper_id
         {
             0 => Some(Arc::new(Mutex::new(Mapper000::new(s.prg_banks, s.chr_banks)))),
+            2 => Some(Arc::new(Mutex::new(Mapper002::new(s.prg_banks, s.chr_banks)))),
             _ => panic!("Invalid mapper type, not supported")
         };
 
@@ -139,7 +181,7 @@ impl ReadWrite for Cart
         let mut mapped_addr: u32 = 0;
         let handled = match &self.mapper
         {
-            Some(x) => x.lock().unwrap().cpu_map_write(address, &mut mapped_addr),
+            Some(x) => x.lock().unwrap().cpu_map_write(address, &mut mapped_addr, data),
             None => panic!("No mapper set for cartridge")
         };
 
@@ -173,7 +215,7 @@ impl ReadWrite for Cart
         let mut mapped_addr: u32 = 0;
         let handled = match &self.mapper
         {
-            Some(x) => x.lock().unwrap().ppu_map_write(address, &mut mapped_addr),
+            Some(x) => x.lock().unwrap().ppu_map_write(address, &mut mapped_addr, data),
             None => panic!("No mapper set for cartridge")
         };
 
@@ -188,7 +230,7 @@ impl ReadWrite for Cart
     fn ppu_read(&self, address: u16, data: &mut u8) -> bool
     {
         let mut mapped_addr: u32 = 0;
-        let handled =match &self.mapper
+        let handled = match &self.mapper
         {
             Some(x) => x.lock().unwrap().ppu_map_read(address, &mut mapped_addr),
             None => panic!("No mapper set for cartridge")

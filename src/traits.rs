@@ -9,9 +9,10 @@ pub trait ReadWrite
 pub trait MapperTrait
 {
     fn cpu_map_read(&self, address: u16, mapped_addr: &mut u32) -> bool;
-    fn cpu_map_write(&self, address: u16, mapped_addr: &mut u32) -> bool;
+    fn cpu_map_write(&mut self, address: u16, mapped_addr: &mut u32, data: u8) -> bool;
     fn ppu_map_read(&self, address: u16, mapped_addr: &mut u32) -> bool;
-    fn ppu_map_write(&self, address: u16, mapped_addr: &mut u32) -> bool;
+    fn ppu_map_write(&mut self, address: u16, mapped_addr: &mut u32, data: u8) -> bool;
+    fn reset(&mut self);
 }
 
 pub trait Clockable

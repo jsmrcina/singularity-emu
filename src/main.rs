@@ -72,9 +72,9 @@ impl MainState
                 let cart_wrapper = Arc::new(Mutex::new(x));
                 bus.insert_cartridge(cart_wrapper);
             },
-            _ =>
+            Err(x) =>
             {
-                panic!("Failed to load cartridge");
+                panic!("Failed to load cartridge: {}", x);
             }
         }
 
@@ -221,8 +221,11 @@ impl MainState
             num_offset += 1;
         }
 
-        canvas.draw(&Text::new(self.map_asm.get(&cpu.get_pc()).unwrap()),
-            graphics::DrawParam::new().color(graphics::Color::CYAN).dest(Vec2::new(x, y + (MainState::OFFSET_Y * num_offset as f32))));
+        if let Some(s) = self.map_asm.get(&cpu.get_pc())
+        {
+            canvas.draw(&Text::new(s),
+                graphics::DrawParam::new().color(graphics::Color::CYAN).dest(Vec2::new(x, y + (MainState::OFFSET_Y * num_offset as f32))));
+        }
 
         num_offset += 1;
         for (_, value) in after_keys

@@ -2,13 +2,13 @@ use crate::traits::MapperTrait;
 
 pub struct Mapper000
 {
-    prg_banks: u8,
-    _chr_banks: u8
+    prg_banks: u16,
+    _chr_banks: u16
 }
 
 impl Mapper000
 {
-    pub fn new(prg_banks: u8, chr_banks: u8) -> Self
+    pub fn new(prg_banks: u16, chr_banks: u16) -> Self
     {
         Mapper000 {
             prg_banks,
@@ -39,7 +39,7 @@ impl MapperTrait for Mapper000
         false
     }
 
-    fn cpu_map_write(&self, address: u16, mapped_addr: &mut u32) -> bool
+    fn cpu_map_write(&mut self, address: u16, mapped_addr: &mut u32, _: u8) -> bool
     {
         if address >= 0x8000
         {
@@ -70,8 +70,13 @@ impl MapperTrait for Mapper000
         false
     }
 
-    fn ppu_map_write(&self, _: u16, _: &mut u32) -> bool
+    fn ppu_map_write(&mut self, _: u16, _: &mut u32, _: u8) -> bool
     {
         false
+    }
+
+    fn reset(&mut self)
+    {
+        // Does nothing
     }
 }

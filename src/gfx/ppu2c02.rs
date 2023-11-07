@@ -725,7 +725,7 @@ impl ReadWrite for Ppu2c02
     fn ppu_read(&self, address: u16, data: &mut u8) -> bool
     {
         let mut mut_addr = address & 0x3FFF;
-        let handled =match &self.cartridge
+        let handled = match &self.cartridge
         {
             Some(x) =>
             {
@@ -1041,7 +1041,7 @@ impl Clockable for Ppu2c02
                             {
                                 sprite_pattern_addr_lo =
                                     (((self.sprite_scanline[index].id & 0x01) as u16) << 12) |              // Which pattern table (0 or 4kb)
-                                    ((self.sprite_scanline[index].id & 0xFE) as u16 + 1) << 4 |             // Which cell, Tile ID * 16 (16 bytes per tile)
+                                    (((self.sprite_scanline[index].id & 0xFE) + 1) as u16) << 4 |           // Which cell, Tile ID * 16 (16 bytes per tile)
                                     (self.scan_line as u16 - self.sprite_scanline[index].y as u16) & 0x07;  // Which row in the cell, 0 to 7
                             }
                         }

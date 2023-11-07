@@ -118,7 +118,7 @@ impl SoundEngine
         // For each APU clock tick, we request a single sample from the oscillator
         // Thus, the oscillator sample rate is: sound sample rate * ((clock_tick calls) / 6)
     
-        self.sample_rate as f64 * self.audio_time_per_system_sample / self.audio_time_per_nes_clock / 6.0
+        self.sample_rate as f64  * self.audio_time_per_system_sample / self.audio_time_per_nes_clock / 6.0
     }
 }
 
