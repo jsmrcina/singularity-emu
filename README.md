@@ -11,4 +11,4 @@ If you want to see his implementation, you can find it [here](https://github.com
 If you want to see his YouTube channel, you can find it [here](https://www.youtube.com/@javidx9).
 
 # License
-This code is released under the provided LICENSE.md file. Note that OLC_LICENSE.md contains the original OneLoneCoder license, as required, since his code was referenced during the making of this program.
+This code is released under the provided LICENSE file. Note that OLC_LICENSE contains the original OneLoneCoder license, as required, since his code was referenced during the making of this program.
