@@ -4,7 +4,7 @@ The code in this repository was used as a learning exercise to understand the ar
 Note that none of the code in this repository is intended to be used for bypassing copyright protections. It is solely intended to be used as a way to learn about video game console architecture of the 8-bit era.
 
 # Special Thanks
-## OneLoneCode
+## OneLoneCoder
 This program could not have been created without the help of OneLoneCoder's YouTube tutorial series on how the NES architecture works. One of the bigger challenges in doing this in Rust was finding a game engine and sound engine that could be used in Rust to do some of the things that OneLoneCoder gets for 'free' from his pixel game engine.
 
 If you want to see his implementation, you can find it [here](https://github.com/OneLoneCoder/olcNES).
